@@ -179,7 +179,7 @@ func ensureBubbleUIThread() {
 
 func bubbleUILoop() {
 	// 消息泵 goroutine 必须钉死在单一 OS 线程上，否则窗口与消息队列分离（见 pinBubbleUIThread）。
-	pinBubbleUIThread()
+	pinnedTID := pinBubbleUIThread()
 	className, _ := windows.UTF16PtrFromString(bubbleClassName)
 	cursor, _, _ := procLoadCursorW.Call(0, uintptr(idcArrow))
 	bg, _, _ := procGetStockObject.Call(colorBtnface)
@@ -193,7 +193,7 @@ func bubbleUILoop() {
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
 	bubbleMu.Lock()
-	bubbleThreadID = windows.GetCurrentThreadId()
+	bubbleThreadID = pinnedTID // 已钉死，同线程，无需再查
 	bubbleMu.Unlock()
 	close(bubbleReady)
 
