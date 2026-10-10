@@ -125,6 +125,35 @@ func TestDetectHealthyNotUpdating(t *testing.T) {
 	}
 }
 
+// 平台契约：更新中判定仅 Windows 生效。非 Windows 的 InstallDirs 是共享 bin 目录
+// 且无 zip 自更新机制，误报没有任何真阳性补偿。
+func TestDetectUpdatingWindowsOnly(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "cursor-agent")
+	if err := os.MkdirAll(filepath.Join(root, "versions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeRawFile(t, filepath.Join(root, "versions", "fresh.zip"))
+	t.Setenv("PATH", t.TempDir())
+
+	got := Detect(updatingSpec(home, root), home)
+	if runtime.GOOS == "windows" {
+		if !got.Updating {
+			t.Fatalf("Windows 上应判定更新中, got %+v", got)
+		}
+		return
+	}
+	if got.Updating {
+		t.Fatalf("非 Windows 不得判定更新中, got %+v", got)
+	}
+	if got.Source != "config-dir" || !got.Broken {
+		t.Fatalf("非 Windows 应落回 config-dir 残缺, got %+v", got)
+	}
+}
+
 func writeFakeBin(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	var path string

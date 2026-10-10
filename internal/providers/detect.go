@@ -79,11 +79,12 @@ const updatingZipMaxAge = 10 * time.Minute
 const updatingDirMaxAge = 90 * time.Second
 
 // updatingHint 判断「所有可执行入口都未命中」时安装目录是否呈现官方自更新进行中的迹象。
-// 仅对声明了 NodeEntryScript 的 provider 启用（目前只有 cursor）：其安装目录私有，
-// mtime 变化与更新器行为强相关；共享 bin 目录（如 ~/.local/bin）的 provider 不启用，
-// 避免把别家刚写入的文件误判成本工具更新中。误报代价有界：目录 90 秒后即退出更新中形态。
+// 仅 Windows 启用：zip 自更新是 Windows 官方布局（node.exe + versions\）专属行为，
+// 非 Windows 是原生二进制安装且 InstallDirs 为共享 bin 目录（~/.local/bin），
+// 该平台下此分支只有误报没有真阳性。共享 bin 目录的 provider（未声明 NodeEntryScript）
+// 同样不启用。误报代价有界：目录 90 秒后即退出更新中形态。
 func updatingHint(spec DetectSpec, home string) bool {
-	if spec.NodeEntryScript == "" {
+	if runtime.GOOS != "windows" || spec.NodeEntryScript == "" {
 		return false
 	}
 	now := time.Now()
