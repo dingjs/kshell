@@ -3,6 +3,7 @@
 package desktop
 
 import (
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -159,6 +160,17 @@ func showAgentBubble(title, body, termKey string) error {
 	}
 }
 
+// pinBubbleUIThread 把当前 goroutine 钉死在当前 OS 线程上并返回该线程 ID。
+// Win32 消息循环必须与创建窗口的 OS 线程绑定：Go 调度器迁移 goroutine 后，
+// GetMessage 泵的是新线程的队列，原队列里的点击/WM_TIMER 永远无人处理，
+// 气泡会「无响应」（ghost 窗口），故循环入口处必须 LockOSThread。
+// 注意：Go 1.27 起 LockedOSThread 已从公开 API 移除，无法直接查询锁定状态，
+// 以返回的线程 ID 作为可观测契约（测试断言钉住前后线程 ID 一致且跨调度点稳定）。
+func pinBubbleUIThread() uint32 {
+	runtime.LockOSThread()
+	return windows.GetCurrentThreadId()
+}
+
 func ensureBubbleUIThread() {
 	bubbleOnce.Do(func() {
 		go bubbleUILoop()
@@ -166,6 +178,8 @@ func ensureBubbleUIThread() {
 }
 
 func bubbleUILoop() {
+	// 消息泵 goroutine 必须钉死在单一 OS 线程上，否则窗口与消息队列分离（见 pinBubbleUIThread）。
+	pinBubbleUIThread()
 	className, _ := windows.UTF16PtrFromString(bubbleClassName)
 	cursor, _, _ := procLoadCursorW.Call(0, uintptr(idcArrow))
 	bg, _, _ := procGetStockObject.Call(colorBtnface)
