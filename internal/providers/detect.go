@@ -54,6 +54,12 @@ func Detect(spec DetectSpec, home string) Detection {
 		}
 	}
 
+	// 官方自更新进行中：入口被更新器清掉的短暂窗口。按「更新中」而非「残缺」上报，
+	// 避免自动修复与更新器竞争写同一目录；更新完成后重试即自愈。
+	if updatingHint(spec, home) {
+		return Detection{Installed: true, Source: "updating", Updating: true}
+	}
+
 	for _, dir := range spec.ConfigDirs {
 		if isDir(expandHome(dir, home)) {
 			// 配置目录是用户数据（updater 清入口不碰它），存在只证明「用过」，
@@ -63,6 +69,42 @@ func Detect(spec DetectSpec, home string) Detection {
 	}
 
 	return Detection{}
+}
+
+// updatingZipMaxAge 是更新器下载 zip 到 versions\ 后解压前的最大窗口；
+// 超过视为历史残留而非更新中。
+const updatingZipMaxAge = 10 * time.Minute
+
+// updatingDirMaxAge 是「目录刚被更新器写入」的判定窗口（删/建 shim、zip 落地都会触碰 mtime）。
+const updatingDirMaxAge = 90 * time.Second
+
+// updatingHint 判断「所有可执行入口都未命中」时安装目录是否呈现官方自更新进行中的迹象。
+// 仅对声明了 NodeEntryScript 的 provider 启用（目前只有 cursor）：其安装目录私有，
+// mtime 变化与更新器行为强相关；共享 bin 目录（如 ~/.local/bin）的 provider 不启用，
+// 避免把别家刚写入的文件误判成本工具更新中。误报代价有界：目录 90 秒后即退出更新中形态。
+func updatingHint(spec DetectSpec, home string) bool {
+	if spec.NodeEntryScript == "" {
+		return false
+	}
+	now := time.Now()
+	for _, dir := range spec.InstallDirs {
+		root := expandHome(dir, home)
+		versions := filepath.Join(root, "versions")
+		// 待解压 zip：更新器下载完成、解压前的典型形态
+		zips, _ := filepath.Glob(filepath.Join(versions, "*.zip"))
+		for _, z := range zips {
+			if zi, err := os.Stat(z); err == nil && now.Sub(zi.ModTime()) <= updatingZipMaxAge {
+				return true
+			}
+		}
+		// 目录刚被写入：更新起步阶段（shim 刚删、zip 尚未落地）
+		for _, d := range []string{root, versions} {
+			if di, err := os.Stat(d); err == nil && di.IsDir() && now.Sub(di.ModTime()) <= updatingDirMaxAge {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // FindBins 列出 LookPath 命中的那一份，以及 InstallDirs 里存在的候选文件（去重），不含配置目录。

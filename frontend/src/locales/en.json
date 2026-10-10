@@ -104,7 +104,8 @@
     },
     "launch": {
       "no_binary": "This tool has no executable, cannot start a session",
-      "no_acp_adapter": "This tool has no available ACP adapter"
+      "no_acp_adapter": "This tool has no available ACP adapter",
+      "updating": "This tool is self-updating, please try again in a moment"
     },
     "launcher": {
       "no_exec": "No executable specified (the tool only has a config directory)"

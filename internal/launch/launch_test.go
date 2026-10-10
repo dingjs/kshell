@@ -73,6 +73,31 @@ func TestLaunchErrorKeys(t *testing.T) {
 	if got := ErrACPUnavailable.Error(); got != "err.launch.no_acp_adapter" {
 		t.Fatalf("ErrACPUnavailable = %q, want err.launch.no_acp_adapter", got)
 	}
+	if got := ErrToolUpdating.Error(); got != "err.launch.updating" {
+		t.Fatalf("ErrToolUpdating = %q, want err.launch.updating", got)
+	}
+}
+
+// 自更新进行中的工具：新建/恢复会话一律返回 ErrToolUpdating（前端译成「稍后重试」），
+// 不得落进 ErrToolNotRunnable 或 ErrACPUnavailable。
+func TestUpdatingToolReturnsErrToolUpdating(t *testing.T) {
+	updating := []discovery.Tool{{ID: "cursor", Installed: true, Source: "updating", Updating: true}}
+	p := fakeProvider{id: "cursor", newSess: providers.Launch{Path: "cursor-agent"}}
+
+	if _, err := ForWorkspaceTool([]providers.Provider{p}, updating, discovery.Workspace{Path: `D:\ws`}, "cursor", ThemeOptions{}, ModelOptions{}, PermissionOptions{}); !errors.Is(err, ErrToolUpdating) {
+		t.Fatalf("ForWorkspaceTool 更新中应返回 ErrToolUpdating, got %v", err)
+	}
+	if _, err := ForWorkspaceACP([]providers.Provider{p}, updating, discovery.Workspace{Path: `D:\ws`}, "cursor", ModelOptions{}, PermissionOptions{}); !errors.Is(err, ErrToolUpdating) {
+		t.Fatalf("ForWorkspaceACP 更新中应返回 ErrToolUpdating, got %v", err)
+	}
+	s := providers.Session{ID: "s1", ToolID: "cursor"}
+	if _, err := ForSession([]providers.Provider{p}, updating, s, ThemeOptions{}, ModelOptions{}, PermissionOptions{}); !errors.Is(err, ErrToolUpdating) {
+		t.Fatalf("ForSession 更新中应返回 ErrToolUpdating, got %v", err)
+	}
+	// 首选工具逻辑：更新中的工具不可被选为新建会话工具
+	if _, _, ok := PreferredTool([]providers.Provider{p}, updating, discovery.Workspace{Path: `D:\ws`}); ok {
+		t.Fatal("更新中的工具不得被 PreferredTool 选中")
+	}
 }
 
 func TestForWorkspacePicksPreferredTool(t *testing.T) {

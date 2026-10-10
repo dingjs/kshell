@@ -27,6 +27,9 @@ describe('translateBackend', () => {
     );
     expect(translateBackend('update.reason.up_to_date')).toBe(en.update.reason.up_to_date);
   });
+  it('自更新中 wire key 翻译为友好文案', () => {
+    expect(translateBackend('err.launch.updating')).toBe(en.err.launch.updating);
+  });
 });
 
 describe('backendError', () => {

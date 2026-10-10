@@ -6,7 +6,124 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
+
+// agePath 把路径 mtime 拨回到 age 之前，用于模拟"陈旧"状态。
+func agePath(t *testing.T, path string, age time.Duration) {
+	t.Helper()
+	old := time.Now().Add(-age)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatalf("chtimes %s: %v", path, err)
+	}
+}
+
+// updatingSpec 构造带 node-entry 兜底与 config-dir 的检测规格（cursor 形态）。
+func updatingSpec(home, installDir string) DetectSpec {
+	return DetectSpec{
+		BinName:         "cursor-agent",
+		InstallDirs:     []string{installDir},
+		ConfigDirs:      []string{"~/.cursor"},
+		NodeEntryScript: "index.js",
+	}
+}
+
+// 更新器下载 zip 待解压形态：versions\ 下有新鲜 zip、无任何可执行入口 → 更新中。
+func TestDetectUpdatingByRecentZip(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "cursor-agent")
+	if err := os.MkdirAll(filepath.Join(root, "versions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 目录整体拨旧，隔离出「仅 zip 新鲜」这一个信号
+	agePath(t, root, 5*time.Minute)
+	agePath(t, filepath.Join(root, "versions"), 5*time.Minute)
+	writeRawFile(t, filepath.Join(root, "versions", "0c73a25e.zip"))
+	t.Setenv("PATH", t.TempDir())
+
+	got := Detect(updatingSpec(home, root), home)
+	if !got.Installed || !got.Updating {
+		t.Fatalf("应判定更新中, got %+v", got)
+	}
+	if got.Source != "updating" {
+		t.Fatalf("Source = %q, want updating", got.Source)
+	}
+	if got.Broken {
+		t.Fatal("更新中不得标记 Broken（避免触发自动修复与更新器竞争）")
+	}
+}
+
+// 更新器刚清掉 shim、zip 尚未落地的起步形态：根目录 mtime 新鲜 → 更新中。
+func TestDetectUpdatingByRecentMtime(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "cursor-agent")
+	if err := os.MkdirAll(filepath.Join(root, "versions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 目录拨旧后碰一下根目录（建再删一个文件），模拟更新器刚动过
+	agePath(t, root, 5*time.Minute)
+	agePath(t, filepath.Join(root, "versions"), 5*time.Minute)
+	touch := filepath.Join(root, "transient")
+	if err := os.WriteFile(touch, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(touch); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+
+	got := Detect(updatingSpec(home, root), home)
+	if !got.Installed || !got.Updating || got.Broken {
+		t.Fatalf("根目录刚被写入应判定更新中, got %+v", got)
+	}
+}
+
+// zip 是历史残留（20 分钟前）、目录 mtime 也陈旧 → 落回 config-dir 残缺，不算更新中。
+func TestDetectStaleZipNotUpdating(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "cursor-agent")
+	if err := os.MkdirAll(filepath.Join(root, "versions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeRawFile(t, filepath.Join(root, "versions", "stale.zip"))
+	agePath(t, filepath.Join(root, "versions", "stale.zip"), 20*time.Minute)
+	agePath(t, root, 20*time.Minute)
+	agePath(t, filepath.Join(root, "versions"), 20*time.Minute)
+	t.Setenv("PATH", t.TempDir())
+
+	got := Detect(updatingSpec(home, root), home)
+	if got.Updating {
+		t.Fatalf("陈旧 zip 不得判定更新中, got %+v", got)
+	}
+	if got.Source != "config-dir" || !got.Broken {
+		t.Fatalf("应落回 config-dir 残缺, got %+v", got)
+	}
+}
+
+// 健康安装（shim 存在）即使目录新鲜也不得误报更新中。
+func TestDetectHealthyNotUpdating(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "cursor-agent")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeBin(t, root, "cursor-agent", "echo ok")
+	t.Setenv("PATH", t.TempDir())
+
+	got := Detect(updatingSpec(home, root), home)
+	if !got.Installed || got.Updating {
+		t.Fatalf("健康安装不得判定更新中, got %+v", got)
+	}
+}
 
 func writeFakeBin(t *testing.T, dir, name, body string) string {
 	t.Helper()

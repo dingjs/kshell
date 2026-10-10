@@ -15,6 +15,10 @@ import (
 // ErrToolNotRunnable 表示目标工具未安装或没有可执行文件。
 var ErrToolNotRunnable = errors.New("err.launch.no_binary")
 
+// ErrToolUpdating 表示目标工具正处于官方自更新窗口（入口被更新器临时清掉）。
+// 与 ErrToolNotRunnable 区分开：前端译成「正在自更新，请稍后重试」而非「无二进制」。
+var ErrToolUpdating = errors.New("err.launch.updating")
+
 // ThemeOptions 描述主题注入所需信息：模式 + 生成文件落盘目录（空则跳过文件类注入）。
 type ThemeOptions struct {
 	Mode     appearance.Mode
@@ -111,6 +115,9 @@ func composeResume(l providers.Launch, p providers.Provider, tool discovery.Tool
 func ForSession(ps []providers.Provider, tools []discovery.Tool, s providers.Session, to ThemeOptions, mo ModelOptions, po PermissionOptions) (providers.Launch, error) {
 	_ = mo
 	tool, ok := toolFor(tools, s.ToolID)
+	if ok && tool.Updating {
+		return providers.Launch{}, ErrToolUpdating
+	}
 	if !ok || !tool.Installed || tool.BinPath == "" {
 		return providers.Launch{}, ErrToolNotRunnable
 	}
@@ -139,6 +146,9 @@ func ForWorkspaceTool(ps []providers.Provider, tools []discovery.Tool, ws discov
 	}
 
 	tool, ok := toolFor(tools, toolID)
+	if ok && tool.Updating {
+		return providers.Launch{}, ErrToolUpdating
+	}
 	if !ok || !tool.Installed || tool.BinPath == "" {
 		return providers.Launch{}, ErrToolNotRunnable
 	}
@@ -194,6 +204,9 @@ var ErrACPUnavailable = errors.New("err.launch.no_acp_adapter")
 func ForSessionACP(ps []providers.Provider, tools []discovery.Tool, s providers.Session, mo ModelOptions, po PermissionOptions) (providers.Launch, error) {
 	_ = mo
 	tool, ok := toolFor(tools, s.ToolID)
+	if ok && tool.Updating {
+		return providers.Launch{}, ErrToolUpdating
+	}
 	if !ok {
 		return providers.Launch{}, ErrToolNotRunnable
 	}
@@ -220,6 +233,9 @@ func ForWorkspaceACP(ps []providers.Provider, tools []discovery.Tool, ws discove
 		p, tool = pp, t
 	} else {
 		t, ok := toolFor(tools, toolID)
+		if ok && t.Updating {
+			return providers.Launch{}, ErrToolUpdating
+		}
 		if !ok {
 			return providers.Launch{}, ErrToolNotRunnable
 		}

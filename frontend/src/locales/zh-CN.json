@@ -104,7 +104,8 @@
     },
     "launch": {
       "no_binary": "该工具没有可执行程序，无法启动会话",
-      "no_acp_adapter": "该工具没有可用的 ACP 适配器"
+      "no_acp_adapter": "该工具没有可用的 ACP 适配器",
+      "updating": "检测到该工具正在自更新，请稍等片刻后重试"
     },
     "launcher": {
       "no_exec": "launcher: 未指定可执行文件（工具只检测到配置目录，没有可执行程序）"

@@ -14,11 +14,15 @@ import (
 type Detection struct {
 	Installed bool
 	BinPath   string
-	Source    string // path | install-dir | node-entry | config-dir
+	Source    string // path | install-dir | node-entry | updating | config-dir
 	// Broken 为 true 表示「有使用痕迹但没有任何启动入口」（Source=config-dir 兜底）：
 	// 官方 updater 清 shim/node.exe、或被半卸载后留下的残缺安装。UI 据此显示
 	// 「已损坏」，桌面端据此触发自动修复。健康分支与未安装一律 false。
 	Broken bool
+	// Updating 为 true 表示安装目录呈现官方自更新进行中的迹象（Source=updating）：
+	// 更新器刚清掉入口或 zip 已下载待解压的短暂窗口。此时不得标记 Broken——
+	// 自动修复会与更新器竞争写同一目录。更新完成（通常 1–2 分钟）后重试即自愈。
+	Updating bool
 	// BinArgs 是入口前缀参数：node 入口形态（BinPath 指向 node.exe）下为
 	// [主脚本名]，普通可执行文件为 nil。启动与版本探测都须先拼上这组参数。
 	BinArgs []string

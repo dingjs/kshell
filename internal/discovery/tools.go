@@ -18,6 +18,9 @@ type Tool struct {
 	// Broken 为 true：Installed 但没有任何可执行入口（Source=config-dir），
 	// 即安装残缺。UI 显示「已损坏」，桌面端可触发自动修复。
 	Broken bool
+	// Updating 为 true：官方自更新进行中的短暂窗口（Source=updating）。
+	// 新建会话时据此提示「稍后重试」而非报残缺/无二进制。
+	Updating bool
 	// ACP 为 nil 表示该 provider 不支持 ACP；非 nil 时其 Available 表示本机是否可用。
 	ACP *providers.ACPDetection
 }
@@ -46,6 +49,7 @@ func detectAll(home string, ps []providers.Provider, probe func(bin string, args
 			Installed: d.Installed,
 			Source:    d.Source,
 			Broken:    d.Broken,
+			Updating:  d.Updating,
 		}
 		if d.Installed && d.BinPath != "" {
 			t.Version = probe(d.BinPath, d.BinArgs)
