@@ -35,6 +35,7 @@ type Connection struct {
 	IdentityFile string    `yaml:"identity_file,omitempty"`
 	Password     string    `yaml:"password,omitempty"`
 	Workspace    string    `yaml:"workspace,omitempty"`
+	AllowAgent   bool      `yaml:"allow_agent,omitempty"`
 	Source       string    `yaml:"source,omitempty"`
 	SourceFile   string    `yaml:"source_file,omitempty"`
 	Verified     bool      `yaml:"verified,omitempty"`
