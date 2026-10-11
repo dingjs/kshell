@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   deleteConnection: vi.fn(),
   execRemote: vi.fn(),
   pickFile: vi.fn(),
+  scanSSHClientConfigs: vi.fn(),
+  importSSHConnections: vi.fn(),
 }));
 vi.mock('../lib/api', () => mocks);
 
@@ -68,6 +70,8 @@ beforeEach(() => {
   mocks.deleteConnection.mockResolvedValue(undefined);
   mocks.execRemote.mockResolvedValue(result({ Stdout: 'ok' }));
   mocks.pickFile.mockResolvedValue('');
+  mocks.scanSSHClientConfigs.mockResolvedValue([]);
+  mocks.importSSHConnections.mockResolvedValue([]);
   useAppStore.setState({ windowStatus: {}, toasts: [] });
 });
 
@@ -291,6 +295,56 @@ describe('SshPanel', () => {
     expect(mocks.upsertConnection).toHaveBeenCalledWith(
       expect.objectContaining({ ID: 'c1', Password: 's3cret' }),
     );
+  });
+
+  it('AllowAgent 开启时列表显示 Agent 标记', async () => {
+    mocks.listConnections.mockResolvedValue([
+      { ...conns[0], AllowAgent: true },
+      conns[1],
+    ]);
+    render(<SshPanel wsPath="D:\\proj-a" />);
+    const row = await findRow('生产机');
+    expect(within(row).getByText(tt('ui.ssh.allow_agent_badge'))).toBeInTheDocument();
+  });
+
+  it('保存时传递 AllowAgent', async () => {
+    render(<SshPanel wsPath="D:\\proj-a" />);
+    const row = await findRow('生产机');
+    fireEvent.click(within(row).getByRole('button', { name: tt('ui.ssh.edit') }));
+    await screen.findByText(tt('ui.ssh.edit_title'));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: tt('ui.ssh.allow_agent_label') }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.ssh.save') }));
+    });
+
+    expect(mocks.upsertConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ ID: 'c1', AllowAgent: true }),
+    );
+  });
+
+  it('点导入打开对话框并扫描', async () => {
+    mocks.scanSSHClientConfigs.mockResolvedValue([
+      {
+        Name: 'Xsh',
+        Host: '1.2.3.4',
+        User: '',
+        Port: 22,
+        IdentityFile: '',
+        Source: 'xshell',
+        SourceFile: '',
+        Password: '',
+        NeedsPassword: false,
+        Confidence: 'high',
+      },
+    ]);
+    render(<SshPanel wsPath="D:\\proj-a" />);
+    await findRow('生产机');
+
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.ssh.import') }));
+    expect(await screen.findByText(tt('ui.ssh.import_title'))).toBeInTheDocument();
+    expect(mocks.scanSSHClientConfigs).toHaveBeenCalled();
+    expect(await screen.findByText('Xsh')).toBeInTheDocument();
   });
 
   it('点浏览私钥按钮调用 PickFile 并回填路径', async () => {

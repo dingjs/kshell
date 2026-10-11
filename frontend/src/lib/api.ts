@@ -159,6 +159,21 @@ export interface SshConnection {
   Source: string;
   SourceFile: string;
   Verified: boolean;
+  AllowAgent?: boolean;
+}
+
+// clients.ClientCandidate 的 JSON 形态（internal/remote/clients/clients.go）
+export interface SshClientCandidate {
+  Name: string;
+  Host: string;
+  User: string;
+  Port: number;
+  IdentityFile: string;
+  Source: string;
+  SourceFile: string;
+  Password: string;
+  NeedsPassword: boolean;
+  Confidence: string; // high | medium | low
 }
 
 // workspace.SearchHit 的 JSON 形态（internal/workspace/search.go）：
@@ -496,6 +511,8 @@ interface AppBindings {
   OpenSSHTerminal(connID: string, cols: number, rows: number): Promise<TerminalInfo>;
   UpsertConnection(conn: SshConnection): Promise<SshConnection>;
   DeleteConnection(id: string): Promise<void>;
+  ScanSSHClientConfigs(): Promise<SshClientCandidate[]>;
+  ImportSSHConnections(wsPath: string, items: SshClientCandidate[]): Promise<SshConnection[]>;
   ExecRemote(connID: string, cmd: string): Promise<RemoteResult>;
   GetTools(): Promise<ToolInfo[]>;
   SearchSkills(query: string, limit: number): Promise<SkillSummary[]>;
@@ -981,7 +998,25 @@ export async function upsertConnection(conn: Partial<SshConnection> & { Host: st
     Source: conn.Source ?? '',
     SourceFile: conn.SourceFile ?? '',
     Verified: conn.Verified ?? false,
+    AllowAgent: conn.AllowAgent ?? false,
   });
+}
+
+// scanSSHClientConfigs 扫描本机 SSH 客户端配置候选（Xshell、PuTTY 等）。
+export async function scanSSHClientConfigs(): Promise<SshClientCandidate[]> {
+  const a = app();
+  if (!a) return [];
+  return (await a.ScanSSHClientConfigs()) ?? [];
+}
+
+// importSSHConnections 将勾选的候选导入当前工作区连接存储。
+export async function importSSHConnections(
+  wsPath: string,
+  items: SshClientCandidate[],
+): Promise<SshConnection[]> {
+  const a = app();
+  if (!a) throw new Error(ERR_NO_BINDING);
+  return (await a.ImportSSHConnections(wsPath, items)) ?? [];
 }
 
 // deleteConnection 删除指定连接。错误向上抛。

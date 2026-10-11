@@ -25,12 +25,24 @@ import { Dialog } from './ui/dialog';
 import { EmptyState } from './ui/empty-state';
 import { Input } from './ui/input';
 import { Skeleton } from './ui/skeleton';
+import SshImportDialog from './SshImportDialog';
 
 const OUTPUT_TAIL_LINES = 50;
 const HISTORY_LIMIT = 20;
 const HISTORY_CHIPS = 5;
 
-const SOURCE_KEYS = ['sshconfig', 'env', 'spring', 'deploy', 'docs', 'manual'];
+const SOURCE_KEYS = [
+  'sshconfig',
+  'env',
+  'spring',
+  'deploy',
+  'docs',
+  'manual',
+  'xshell',
+  'securecrt',
+  'mobaxterm',
+  'putty',
+];
 
 function sourceLabel(source: string, t: TFunction): string {
   return SOURCE_KEYS.includes(source) ? t(`ui.ssh.source_${source}`) : source;
@@ -56,6 +68,7 @@ type FormState = {
   Port: string;
   IdentityFile: string;
   Password: string;
+  AllowAgent: boolean;
 };
 
 const emptyForm = (): FormState => ({
@@ -66,6 +79,7 @@ const emptyForm = (): FormState => ({
   Port: '22',
   IdentityFile: '',
   Password: '',
+  AllowAgent: false,
 });
 
 function formFromConn(c: SshConnection): FormState {
@@ -77,6 +91,7 @@ function formFromConn(c: SshConnection): FormState {
     Port: String(c.Port > 0 ? c.Port : 22),
     IdentityFile: c.IdentityFile,
     Password: c.Password ?? '',
+    AllowAgent: !!c.AllowAgent,
   };
 }
 
@@ -103,8 +118,18 @@ export default function SshPanel({
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const notify = useAppStore((s) => s.notify);
   const listScope = showAll ? '' : wsPath;
+
+  const refreshList = () => {
+    listConnections(listScope)
+      .then((list) => {
+        setConns(list);
+        setSelectedId((cur) => (list.some((c) => c.ID === cur) ? cur : list[0]?.ID || ''));
+      })
+      .catch((e: unknown) => setError(backendError(e)));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +184,7 @@ export default function SshPanel({
         Source: prev?.Source ?? '',
         SourceFile: prev?.SourceFile ?? '',
         Verified: prev?.Verified ?? false,
+        AllowAgent: form.AllowAgent,
       });
       setFormOpen(false);
       const list = await listConnections(listScope);
@@ -250,6 +276,9 @@ export default function SshPanel({
           >
             {showAll ? t('ui.ssh.view_current') : t('ui.ssh.view_all')}
           </Button>
+          <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
+            {t('ui.ssh.import')}
+          </Button>
           <Button size="sm" variant="secondary" onClick={openNew}>
             {t('ui.ssh.new')}
           </Button>
@@ -306,6 +335,14 @@ export default function SshPanel({
                 >
                   {sourceLabel(c.Source, t)}
                 </span>
+                {c.AllowAgent && (
+                  <span
+                    className="shrink-0 rounded-sm border border-border px-1.5 py-px font-mono text-[10px] text-muted-foreground"
+                    title={t('ui.ssh.allow_agent_hint')}
+                  >
+                    {t('ui.ssh.allow_agent_badge')}
+                  </span>
+                )}
                 {c.Verified && <span className="shrink-0 text-success">✓</span>}
               </div>
             </li>
@@ -461,6 +498,19 @@ export default function SshPanel({
             autoComplete="new-password"
           />
           <p className="text-xs text-muted-foreground">{t('ui.ssh.password_plaintext_hint')}</p>
+          <label className="flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              className="mt-0.5 shrink-0"
+              checked={form.AllowAgent}
+              aria-label={t('ui.ssh.allow_agent_label')}
+              onChange={(e) => setForm((f) => ({ ...f, AllowAgent: e.target.checked }))}
+            />
+            <span>
+              <span className="font-medium">{t('ui.ssh.allow_agent_label')}</span>
+              <span className="mt-0.5 block text-muted-foreground">{t('ui.ssh.allow_agent_hint')}</span>
+            </span>
+          </label>
           {formError && <p className="text-xs text-destructive">{formError}</p>}
           <div className="mt-1 flex justify-end gap-2">
             {form.ID && (
@@ -477,6 +527,13 @@ export default function SshPanel({
           </div>
         </div>
       </Dialog>
+
+      <SshImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        wsPath={wsPath}
+        onImported={refreshList}
+      />
     </div>
   );
 }
