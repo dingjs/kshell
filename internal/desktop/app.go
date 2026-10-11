@@ -383,11 +383,13 @@ func (a *App) reapLoop() {
 
 // StartTray 启动系统托盘（未注入托盘图标或 Wails 上下文未就绪时跳过）。
 // systray.Run 独占调用方 goroutine 跑消息循环，必须在 goroutine 里启动。
+// macOS 直接跳过：systray 的 darwin 实现会在非主线程再跑一个 [NSApp run]，
+// 与 Wails 主线程事件循环冲突触发 SIGTRAP（见 docs/plans/2026-10-11-macos-skip-tray-design.md）。
 func (a *App) StartTray() {
 	a.mu.Lock()
 	icon := a.opts.TrayIcon
 	ctx := a.ctx
-	if len(icon) == 0 || ctx == nil {
+	if !traySupportedPlatform || len(icon) == 0 || ctx == nil {
 		a.mu.Unlock()
 		return
 	}

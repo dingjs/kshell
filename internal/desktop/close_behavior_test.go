@@ -205,3 +205,48 @@ func TestStartTraySkippedWithoutIcon(t *testing.T) {
 		t.Fatal("无托盘图标时不应启动托盘消息循环，也不应置位 trayActive")
 	}
 }
+
+func TestStartTraySkippedWhenPlatformUnsupported(t *testing.T) {
+	orig := runTrayFn
+	called := false
+	runTrayFn = func([]byte, func(), func()) { called = true }
+	t.Cleanup(func() { runTrayFn = orig })
+
+	saved := traySupportedPlatform
+	traySupportedPlatform = false
+	t.Cleanup(func() { traySupportedPlatform = saved })
+
+	app := NewAppWith(Options{TrayIcon: []byte{1}})
+	app.ctx = context.Background()
+	app.StartTray()
+
+	app.mu.Lock()
+	active := app.trayActive
+	app.mu.Unlock()
+	if called || active {
+		t.Fatal("平台不支持托盘时不应启动托盘消息循环，也不应置位 trayActive")
+	}
+}
+
+func TestStartTrayStillRunsWhenPlatformSupported(t *testing.T) {
+	orig := runTrayFn
+	started := make(chan struct{})
+	runTrayFn = func([]byte, func(), func()) { close(started) }
+	t.Cleanup(func() { runTrayFn = orig })
+
+	saved := traySupportedPlatform
+	traySupportedPlatform = true
+	t.Cleanup(func() { traySupportedPlatform = saved })
+
+	app := NewAppWith(Options{TrayIcon: []byte{1}})
+	app.ctx = context.Background()
+	app.StartTray()
+	<-started
+
+	app.mu.Lock()
+	active := app.trayActive
+	app.mu.Unlock()
+	if !active {
+		t.Fatal("平台支持托盘时 StartTray 行为应保持不变")
+	}
+}
