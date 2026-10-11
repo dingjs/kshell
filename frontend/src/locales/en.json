@@ -155,6 +155,7 @@
     },
     "update": {
       "no_update": "No update available",
+      "platform_unsupported": "In-app update is not supported on macOS yet, please download from the releases page",
       "no_source": "No available update source",
       "release_missing_asset": "Release {{0}} does not provide {{1}}",
       "dest_exe_empty": "Target executable path is empty",
@@ -174,6 +175,7 @@
   "update": {
     "reason": {
       "dev_build": "Development build; update check skipped",
+      "platform_unsupported": "In-app update is not supported on macOS yet, please download from the releases page",
       "up_to_date": "Up to date"
     }
   },

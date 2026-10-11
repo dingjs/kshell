@@ -155,6 +155,7 @@
     },
     "update": {
       "no_update": "没有可用更新",
+      "platform_unsupported": "macOS 暂不支持应用内更新，请到发布页下载",
       "no_source": "无可用更新源",
       "release_missing_asset": "发布 {{0}} 缺少 {{1}}",
       "dest_exe_empty": "目标可执行文件为空",
@@ -174,6 +175,7 @@
   "update": {
     "reason": {
       "dev_build": "开发构建不检查更新",
+      "platform_unsupported": "macOS 暂不支持应用内更新，请到发布页下载",
       "up_to_date": "已是最新"
     }
   },

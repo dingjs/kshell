@@ -23,8 +23,23 @@ type ApplyOptions struct {
 	SpawnReplace    func(currentExe, newExe string) error
 }
 
+// errUpdatePlatformUnsupported 是 darwin 应用内更新被禁用的兜底（wire key，前端直译）。
+// 对齐 errNoDownloadSource 约定：原样返回，不可再包 `err.update.*|%w`，否则嵌套 wire key 无法翻译。
+var errUpdatePlatformUnsupported = errors.New("err.update.platform_unsupported")
+
 // Apply 下载 zip、校验 SHA-256、解出桌面二进制到 dest+".new"，再调度退出后替换。
 func Apply(ctx context.Context, opts ApplyOptions) error {
+	// darwin 门控：替换会破坏 adhoc 签名（exec 即 SIGKILL），防御性兜底，
+	// 正常路径已被 Check 的平台跳过挡住（见 check.go）。
+	if currentGOOS == "darwin" {
+		return errUpdatePlatformUnsupported
+	}
+	return applyExe(ctx, opts)
+}
+
+// applyExe 是 Apply 去掉平台门控后的下载-校验-替换主体；
+// 抽出来便于单测绕过 darwin 门控继续覆盖提取管线（未来重签名方案重评时复用）。
+func applyExe(ctx context.Context, opts ApplyOptions) error {
 	if opts.DestExe == "" {
 		return fmt.Errorf("err.update.dest_exe_empty")
 	}

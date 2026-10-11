@@ -235,3 +235,35 @@ func githubLatestJSON(tag, zipURL string) string {
   ]
 }`
 }
+
+func TestCheckSkipsDarwinWithoutNetwork(t *testing.T) {
+	prevOS, prevArch := currentGOOS, currentGOARCH
+	currentGOOS, currentGOARCH = "darwin", "arm64"
+	t.Cleanup(func() { currentGOOS, currentGOARCH = prevOS, prevArch })
+
+	called := false
+	c := Client{
+		Current: "v0.1.0",
+		Sources: []Source{{Name: "github", Prefix: ""}},
+		Get: func(context.Context, string) ([]byte, error) {
+			called = true
+			return nil, errors.New("darwin 门控不应发起网络请求")
+		},
+	}
+	got, err := c.Check(context.Background())
+	if err != nil {
+		t.Fatalf("darwin 门控应返回 nil error: %v", err)
+	}
+	if called {
+		t.Fatal("darwin 门控不应发起任何网络请求")
+	}
+	if !got.Skipped {
+		t.Fatal("darwin 上 Check 应置 Skipped")
+	}
+	if got.Reason != "update.reason.platform_unsupported" {
+		t.Fatalf("Reason = %q", got.Reason)
+	}
+	if got.Available {
+		t.Fatal("darwin 上不应报有可用更新")
+	}
+}

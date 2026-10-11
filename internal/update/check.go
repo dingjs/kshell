@@ -175,6 +175,13 @@ func (c Client) Check(ctx context.Context) (CheckResult, error) {
 		out.Reason = "update.reason.dev_build"
 		return out, nil
 	}
+	// darwin 门控：应用内更新会在替换二进制后破坏 adhoc 签名，替换后的
+	// .app 无法启动（exec 即 SIGKILL），先整体禁用，引导走发布页手动下载。
+	if currentGOOS == "darwin" {
+		out.Skipped = true
+		out.Reason = "update.reason.platform_unsupported"
+		return out, nil
+	}
 	src := c.Sources
 	if len(src) == 0 {
 		src = DefaultSources()
