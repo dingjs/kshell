@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SessionTranscript from './SessionTranscript';
 import { tt } from '../test/i18n';
@@ -41,5 +41,17 @@ describe('SessionTranscript', () => {
     mocks.getSessionPreview.mockResolvedValueOnce({ Markdown: 'x', Truncated: true });
     render(<SessionTranscript sessionID="s1" title="t" onActivate={() => {}} />);
     await waitFor(() => expect(screen.getByText(tt('ui.transcript.truncated'))).toBeInTheDocument());
+  });
+
+  // 回归：截断横幅是 h-full 预览的兄弟节点时，预览底部会被 overflow-hidden 裁掉一个横幅的高度，
+  // 表现为滚动条滚不到最底部。横幅与预览必须同处一个 flex 列容器，预览占剩余高度。
+  it('截断时预览占满横幅之外的剩余高度', async () => {
+    mocks.getSessionPreview.mockResolvedValueOnce({ Markdown: 'x', Truncated: true });
+    render(<SessionTranscript sessionID="s1" title="t" onActivate={() => {}} />);
+    const banner = await screen.findByText(tt('ui.transcript.truncated'));
+    const wrap = banner.parentElement!;
+    expect(wrap).toHaveClass('flex-col');
+    const md = within(wrap).getByTestId('md');
+    expect(md.parentElement).toHaveClass('flex-1', 'min-h-0');
   });
 });

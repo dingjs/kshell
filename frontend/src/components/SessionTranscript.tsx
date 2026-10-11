@@ -56,7 +56,9 @@ export default function SessionTranscript({
           {t('ui.transcript.activate')}
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {/* flex 列布局：截断横幅 shrink-0，预览占剩余高度。此前横幅与 h-full 预览做块级兄弟，
+          预览整体被下推一个横幅高度，底部被 overflow-hidden 裁掉，滚动条滚不到最底部。 */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {loading ? (
           <div className="flex flex-col gap-2 p-3">
             <Skeleton className="h-6 w-1/2" />
@@ -67,9 +69,11 @@ export default function SessionTranscript({
         ) : (
           <>
             {truncated && (
-              <p className="border-b border-border px-3 py-1 text-xs text-muted-foreground">{t('ui.transcript.truncated')}</p>
+              <p className="shrink-0 border-b border-border px-3 py-1 text-xs text-muted-foreground">{t('ui.transcript.truncated')}</p>
             )}
-            <MarkdownPreview markdown={markdown} workspaceRoot={workspaceRoot} />
+            <div className="min-h-0 flex-1">
+              <MarkdownPreview markdown={markdown} workspaceRoot={workspaceRoot} />
+            </div>
           </>
         )}
       </div>
