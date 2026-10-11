@@ -73,7 +73,7 @@ func TestApplyExtractsDarwinAppBinary(t *testing.T) {
 	hexSum := hex.EncodeToString(sum[:])
 	sums := []byte(hexSum + "  " + zipName + "\n")
 
-	err := Apply(context.Background(), ApplyOptions{
+	err := applyExe(context.Background(), ApplyOptions{
 		ZipURL:  "https://example/x/" + zipName,
 		SumsURL: "https://example/x/" + SumsName,
 		DestExe: dest,
@@ -273,4 +273,30 @@ func mustZip(t *testing.T, files map[string][]byte) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestApplyRefusesDarwin(t *testing.T) {
+	prevOS, prevArch := currentGOOS, currentGOARCH
+	currentGOOS, currentGOARCH = "darwin", "arm64"
+	t.Cleanup(func() { currentGOOS, currentGOARCH = prevOS, prevArch })
+
+	called := false
+	err := Apply(context.Background(), ApplyOptions{
+		ZipURL:  "https://example.com/kshell-desktop-darwin-arm64.zip",
+		SumsURL: "https://example.com/SHA256SUMS",
+		DestExe: "/Applications/kshell-desktop.app/Contents/MacOS/kshell",
+		Get: func(context.Context, string) ([]byte, error) {
+			called = true
+			return nil, errors.New("darwin 门控不应发起下载")
+		},
+	})
+	if err == nil {
+		t.Fatal("darwin 上 Apply 应直接拒绝")
+	}
+	if called {
+		t.Fatal("darwin 门控不应发起任何下载请求")
+	}
+	if err.Error() != "err.update.platform_unsupported" {
+		t.Fatalf("应原样返回单层 wire key, got %q", err.Error())
+	}
 }
