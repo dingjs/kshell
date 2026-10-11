@@ -174,6 +174,26 @@ export function clampLayout(v: number): number {
   return Math.min(LAYOUT_MAX, Math.max(LAYOUT_MIN, Math.round(v)));
 }
 
+// dedupeTabs 合并持久化恢复的页签里大小写不同的同一路径（存量自愈）：
+// 历史版本按精确字符串去重，同一目录可能存了 D:\x 与 d:\x 两个页签。
+// 保留先出现者；activeTabId 指向被丢弃者时改指保留者。
+export function dedupeTabs(
+  tabs: WorkspaceTab[],
+  activeTabId: string | null,
+): { tabs: WorkspaceTab[]; activeTabId: string | null } {
+  const kept: WorkspaceTab[] = [];
+  const canonical = new Map<string, string>(); // 归一化路径 → 保留的页签 id
+  for (const t of tabs) {
+    const key = normalizeWorkspacePath(t.id);
+    if (canonical.has(key)) continue;
+    canonical.set(key, t.id);
+    kept.push(t);
+  }
+  const active =
+    activeTabId === null ? null : (canonical.get(normalizeWorkspacePath(activeTabId)) ?? activeTabId);
+  return { tabs: kept, activeTabId: active };
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -416,6 +436,12 @@ export const useAppStore = create<AppState>()(
         newSessionTool: s.newSessionTool,
         notifySound: s.notifySound,
       }),
+      // 恢复时合并大小写重复的存量页签（见 dedupeTabs 注释）
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>;
+        const deduped = dedupeTabs(p.openTabs ?? [], p.activeTabId ?? null);
+        return { ...current, ...p, openTabs: deduped.tabs, activeTabId: deduped.activeTabId };
+      },
     },
   ),
 );

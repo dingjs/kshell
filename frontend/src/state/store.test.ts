@@ -2,7 +2,7 @@
 // openTabs/activeTabId 经 persist 中间件落 localStorage（kshell-tabs）。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatInfo, TerminalInfo } from '../lib/api';
-import { SETTINGS_TAB_ID, useAppStore } from './store';
+import { SETTINGS_TAB_ID, dedupeTabs, useAppStore } from './store';
 
 beforeEach(() => {
   // persist 会在每次 setState 后写 localStorage，用例间必须清干净避免互相污染
@@ -316,5 +316,38 @@ describe('store', () => {
     expect(s.openTabs).toHaveLength(1);
     // 保留既有页签 id 作为激活态，避免页签 id 与数组不一致
     expect(s.activeTabId).toBe('D:\\data\\ws\\zfba');
+  });
+
+  it('dedupeTabs 合并仅大小写不同的存量页签，激活态跟随保留者', () => {
+    const { tabs, activeTabId } = dedupeTabs(
+      [
+        { id: 'D:\\data\\ws\\zfba', name: 'zfba' },
+        { id: 'd:\\data\\ws\\zfba', name: 'zfba' },
+      ],
+      'd:\\data\\ws\\zfba',
+    );
+    expect(tabs).toEqual([{ id: 'D:\\data\\ws\\zfba', name: 'zfba' }]);
+    expect(activeTabId).toBe('D:\\data\\ws\\zfba');
+  });
+
+  it('dedupeTabs 对互不重复的页签原样保留', () => {
+    const tabs = [
+      { id: 'D:\\a', name: 'a' },
+      { id: 'D:\\b', name: 'b' },
+    ];
+    expect(dedupeTabs(tabs, 'D:\\b')).toEqual({ tabs, activeTabId: 'D:\\b' });
+  });
+
+  it('dedupeTabs 保持页签原有顺序（先出现者优先），无激活态也能处理', () => {
+    const { tabs, activeTabId } = dedupeTabs(
+      [
+        { id: 'd:\\ws', name: 'ws' },
+        { id: 'D:\\other', name: 'other' },
+        { id: 'D:\\WS', name: 'ws' },
+      ],
+      null,
+    );
+    expect(tabs.map((t) => t.id)).toEqual(['d:\\ws', 'D:\\other']);
+    expect(activeTabId).toBeNull();
   });
 });
