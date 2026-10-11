@@ -100,14 +100,21 @@ func (a *App) handleAgentNotify(p agenthook.Payload) {
 }
 
 // activateFromBubble 是原生气泡点击回调：恢复主窗并通知前端聚焦对应页签。
+// 显示方式按窗口状态分支：任务栏最小化走 SC_RESTORE 恢复（等价任务栏点击，
+// 保留最大化状态）；托盘隐藏 / 非前台被遮挡只前置（对齐托盘菜单）。
+// 二者不可连调：windowUnminimise 的 SC_RESTORE 对最大化窗口会解除最大化，
+// 无条件调用会改变窗体尺寸。
 func (a *App) activateFromBubble(termKey string) {
 	a.setWindowHidden(false)
 	a.mu.Lock()
 	ctx := a.ctx
 	a.mu.Unlock()
 	if ctx != nil {
-		windowShow(ctx)
-		windowUnminimise(ctx)
+		if windowIsMinimised(ctx) {
+			windowUnminimise(ctx)
+		} else {
+			windowShow(ctx)
+		}
 	}
 	a.Emit("notify:focus", map[string]string{"termKey": termKey})
 }

@@ -283,3 +283,50 @@ func TestNotifyToastText(t *testing.T) {
 		})
 	}
 }
+
+// activateFromBubble 按窗口状态分支显示：任务栏最小化只走 SC_RESTORE 恢复
+// （保留最大化状态），托盘隐藏 / 非前台被遮挡只前置（对齐托盘菜单）。
+// 两者不可连调：无条件 Unminimise 会解除最大化，窗体尺寸被改。
+func TestActivateFromBubbleWindowState(t *testing.T) {
+	cases := []struct {
+		name           string
+		minimised      bool
+		foreground     bool
+		wantShow       int
+		wantUnminimise int
+	}{
+		{"任务栏最小化：只 Unminimise", true, true, 0, 1},
+		{"托盘隐藏：只 Show", false, false, 1, 0},
+		{"非前台被遮挡：只 Show", false, false, 1, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, names, _ := newNotifyTestApp(t)
+			a.setWindowHidden(false)
+			stubNotifyWindowState(t, a, c.minimised, c.foreground)
+			origShow, origUnmin := windowShow, windowUnminimise
+			showCalls, unminCalls := 0, 0
+			windowShow = func(context.Context) { showCalls++ }
+			windowUnminimise = func(context.Context) { unminCalls++ }
+			t.Cleanup(func() {
+				windowShow = origShow
+				windowUnminimise = origUnmin
+			})
+
+			a.activateFromBubble("session:s1")
+
+			if showCalls != c.wantShow || unminCalls != c.wantUnminimise {
+				t.Fatalf("show=%d unminimise=%d, want %d/%d", showCalls, unminCalls, c.wantShow, c.wantUnminimise)
+			}
+			found := false
+			for _, n := range *names {
+				if n == "notify:focus" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("notify:focus 应照常发出，得到 %v", *names)
+			}
+		})
+	}
+}
