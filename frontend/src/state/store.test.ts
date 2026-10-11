@@ -303,4 +303,18 @@ describe('store', () => {
     useAppStore.getState().clearFocusTerm(2);
     expect(useAppStore.getState().focusTermKey).toBeNull();
   });
+
+  it('openTab 对仅大小写不同的同一路径只激活既有页签，不新增', () => {
+    useAppStore.setState({
+      openTabs: [{ id: 'D:\\data\\ws\\zfba', name: 'zfba' }],
+      activeTabId: null,
+    });
+    useAppStore.getState().openTab({
+      Path: 'd:\\data\\ws\\zfba', Name: 'zfba', LastUsed: '', SessionCount: 0, ToolCounts: {}, Source: 'manual',
+    });
+    const s = useAppStore.getState();
+    expect(s.openTabs).toHaveLength(1);
+    // 保留既有页签 id 作为激活态，避免页签 id 与数组不一致
+    expect(s.activeTabId).toBe('D:\\data\\ws\\zfba');
+  });
 });

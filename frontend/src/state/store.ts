@@ -8,6 +8,7 @@ import type { AgentNotice } from '../lib/agentNotify';
 import type { AppearanceInfo } from '../lib/appearance';
 import { applyChatUpdate, type TimelineItem } from './chatUpdate';
 import { mergeMirrorList } from './mirrorMerge';
+import { normalizeWorkspacePath, sameWorkspacePath } from '../lib/workspacePath';
 
 // toast 的自增 id（模块级：store 单例，保证 id 唯一即可）
 let nextToastId = 1;
@@ -184,8 +185,11 @@ export const useAppStore = create<AppState>()(
       activeTabId: null,
       openTab: (ws) =>
         set((s) => {
-          if (s.openTabs.some((t) => t.id === ws.Path)) {
-            return { activeTabId: ws.Path };
+          // Windows 路径大小写不敏感：同一目录在不同数据源（会话 cwd / 手动项目表）里
+          // 大小写可能不同，精确比较会把同一工作区开成两个页签
+          const existing = s.openTabs.find((t) => sameWorkspacePath(t.id, ws.Path));
+          if (existing) {
+            return { activeTabId: existing.id };
           }
           return {
             openTabs: [...s.openTabs, { id: ws.Path, name: ws.Name }],
