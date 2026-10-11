@@ -3,12 +3,14 @@ package desktop
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/yangk/kshell/internal/acp"
 	"github.com/yangk/kshell/internal/chat"
 	"github.com/yangk/kshell/internal/mcparchive"
+	"github.com/yangk/kshell/internal/mcpssh"
 	"github.com/yangk/kshell/internal/sessionarchive"
 	"github.com/yangk/kshell/internal/terminal"
 )
@@ -67,16 +69,23 @@ func (a *App) nudgeDiscovery() {
 }
 
 func (a *App) prepareTermSpec(id string, info terminal.Info, spec terminal.Spec) terminal.Spec {
-	if info.ToolID != "claude" {
-		return spec
-	}
 	ws := strings.TrimSpace(info.Workspace)
 	if ws == "" {
 		ws = strings.TrimSpace(spec.Dir)
 	}
-	servers, ok := a.mcpServerDefs(ws, "terminal:"+id)
+	archiveRef := ""
+	if info.ToolID == "claude" {
+		archiveRef = "terminal:" + id
+	}
+	servers, ok := a.mcpServerDefs(ws, archiveRef)
 	if !ok {
 		return spec
+	}
+	if info.ToolID != "claude" {
+		servers = mcpServersWithoutArchive(servers)
+		if len(servers) == 0 {
+			return spec
+		}
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -89,8 +98,24 @@ func (a *App) prepareTermSpec(id string, info terminal.Info, spec terminal.Spec)
 	if err := mcparchive.WriteServers(path, servers); err != nil {
 		return spec
 	}
-	spec.Args = mcparchive.PrependConfig("claude", path, spec.Args)
+	newArgs := mcpssh.InjectArgs(info.ToolID, path, spec.Args)
+	if slices.Equal(newArgs, spec.Args) {
+		// 工具不支持 --mcp-config 时与原先「跳过注入」一致。
+		return spec
+	}
+	spec.Args = newArgs
 	return spec
+}
+
+func mcpServersWithoutArchive(servers []mcparchive.ServerDef) []mcparchive.ServerDef {
+	out := make([]mcparchive.ServerDef, 0, len(servers))
+	for _, s := range servers {
+		if s.Name == "kshell" {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 func (a *App) chatMCPServers(id string) []acp.McpServerStdio {
