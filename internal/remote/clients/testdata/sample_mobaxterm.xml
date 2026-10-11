@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MobaXterm>
+  <Sessions>
+    <Session Name="xmlhost" Host="xml.example.com" Username="xmluser" Port="8022"/>
+  </Sessions>
+</MobaXterm>
