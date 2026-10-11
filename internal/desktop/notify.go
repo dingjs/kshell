@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/yangk/kshell/internal/agenthook"
 	"github.com/yangk/kshell/internal/applang"
+	"github.com/yangk/kshell/internal/terminal"
 )
 
 // notifyPollInterval 是通知收件箱的轮询间隔。notifier 侧毫秒级落盘，
@@ -83,10 +84,14 @@ func (a *App) dispatchNotifyOnce(dir string) {
 	}
 }
 
-// handleAgentNotify 分发一条 agent 通知：窗口内重复事件直接丢弃（防气泡连刷）；
-// 始终推给前端（非前台期间前端照常入队）；主窗非前台/不可见时弹独立置顶气泡
-// （非系统 toast）；前台时只靠前端 NotificationBubble。
+// handleAgentNotify 分发一条 agent 通知：就绪期等待确认噪音直接过滤（见
+// dropUnpromptedWaiting）；窗口内重复事件丢弃（防气泡连刷）；始终推给前端
+// （非前台期间前端照常入队）；主窗非前台/不可见时弹独立置顶气泡（非系统
+// toast）；前台时只靠前端 NotificationBubble。
 func (a *App) handleAgentNotify(p agenthook.Payload) {
+	if a.dropUnpromptedWaiting(p) {
+		return
+	}
 	if !a.notifyDedupFor().allow(p) {
 		return
 	}
@@ -97,6 +102,28 @@ func (a *App) handleAgentNotify(p agenthook.Payload) {
 	title, body := notifyToastText(p)
 	// bubble 失败静默降级为仅 emit：没有独立气泡不影响应用内队列
 	_ = notifyBubble(title, body, p.TermKey)
+}
+
+// dropUnpromptedWaiting 报告该通知是否应丢弃：等待确认类事件（claude/codebuddy
+// 的 Notification、gemini 的 attention）若来自「新建会话且用户尚未发过首条输入」，
+// 属就绪期噪音——agent 刚就绪必然在等输入，此时弹气泡只会打扰。恢复会话与
+// 查不到的 key（外部窗口路径，输入不经 kshell 无从判断）一律放行，宁可多弹
+// 不可漏弹。只查终端管理器：ACP chat 通知不经本函数（emitChatNotify 直发），
+// 且 chat 与终端的 new:<n> key 是两套自增序列，查 chat 会撞 key 误杀。
+func (a *App) dropUnpromptedWaiting(p agenthook.Payload) bool {
+	if p.Event != "Notification" && p.Event != "attention" {
+		return false
+	}
+	m := a.terminals()
+	if m == nil {
+		return false
+	}
+	for _, info := range m.List() {
+		if info.Key == p.TermKey {
+			return info.Kind == terminal.KindNew && !info.Prompted
+		}
+	}
+	return false
 }
 
 // activateFromBubble 是原生气泡点击回调：恢复主窗并通知前端聚焦对应页签。
