@@ -83,9 +83,13 @@ func (a *App) dispatchNotifyOnce(dir string) {
 	}
 }
 
-// handleAgentNotify 分发一条 agent 通知：始终推给前端（非前台期间前端照常入队）；
-// 主窗非前台/不可见时弹独立置顶气泡（非系统 toast）；前台时只靠前端 NotificationBubble。
+// handleAgentNotify 分发一条 agent 通知：窗口内重复事件直接丢弃（防气泡连刷）；
+// 始终推给前端（非前台期间前端照常入队）；主窗非前台/不可见时弹独立置顶气泡
+// （非系统 toast）；前台时只靠前端 NotificationBubble。
 func (a *App) handleAgentNotify(p agenthook.Payload) {
+	if !a.notifyDedupFor().allow(p) {
+		return
+	}
 	a.Emit("notify:agent", p)
 	if a.windowVisible() {
 		return

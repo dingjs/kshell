@@ -148,6 +148,9 @@ type App struct {
 	// windowHidden 跟踪主窗口是否已收进托盘（wails v2.16 无 WindowIsVisible 可查）：
 	// 通知 dispatcher 据此决定要不要弹独立置顶气泡。
 	windowHidden bool
+	// notifyDedup 是 agent 通知去重器（懒创建，mu 保护）：每个实例独立，
+	// 同 (termKey,event,summary) 在窗口内只放行一条，防气泡连刷。
+	notifyDedup *notifyDeduper
 
 	// remoteSessions 按 ssh 工作区 Ref 缓存远端会话扫描结果（与本地 index 隔离）。
 	remoteSessions remoteSessionsCache
