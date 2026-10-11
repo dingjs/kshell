@@ -33,6 +33,11 @@ func (a *App) ensureSessionHooks() {
 			a.archiveHub = h
 			a.mu.Unlock()
 		}
+		if sh, err := StartSSHHub(a); err == nil && sh != nil {
+			a.mu.Lock()
+			a.sshHub = sh
+			a.mu.Unlock()
+		}
 		if m := a.terminals(); m != nil {
 			m.SetOnInfo(func(info terminal.Info) {
 				a.Emit("terminal:meta", info)
@@ -62,16 +67,26 @@ func (a *App) nudgeDiscovery() {
 }
 
 func (a *App) prepareTermSpec(id string, info terminal.Info, spec terminal.Spec) terminal.Spec {
-	if info.ToolID != "claude" || a.archiveHub == nil {
+	if info.ToolID != "claude" {
+		return spec
+	}
+	ws := strings.TrimSpace(info.Workspace)
+	if ws == "" {
+		ws = strings.TrimSpace(spec.Dir)
+	}
+	servers, ok := a.mcpServerDefs(ws, "terminal:"+id)
+	if !ok {
 		return spec
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return spec
 	}
+	for i := range servers {
+		servers[i].Command = exe
+	}
 	path := filepath.Join(a.mcpConfigDir(), "terminal-"+id+".json")
-	args := []string{"mcp-archive", "--url", a.archiveHub.URL, "--token", a.archiveHub.Token, "--ref", "terminal:" + id}
-	if err := mcparchive.WriteConfig(path, exe, args); err != nil {
+	if err := mcparchive.WriteServers(path, servers); err != nil {
 		return spec
 	}
 	spec.Args = mcparchive.PrependConfig("claude", path, spec.Args)
@@ -79,20 +94,70 @@ func (a *App) prepareTermSpec(id string, info terminal.Info, spec terminal.Spec)
 }
 
 func (a *App) chatMCPServers(id string) []acp.McpServerStdio {
-	if a.archiveHub == nil {
+	ws := a.chatWorkspace(id)
+	servers, ok := a.mcpServerDefs(ws, "chat:"+id)
+	if !ok {
 		return nil
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return nil
 	}
-	return []acp.McpServerStdio{{
-		Type:    "stdio",
-		Name:    "kshell",
-		Command: exe,
-		Args:    []string{"mcp-archive", "--url", a.archiveHub.URL, "--token", a.archiveHub.Token, "--ref", "chat:" + id},
-		Env:     []acp.EnvVariable{},
-	}}
+	out := make([]acp.McpServerStdio, 0, len(servers))
+	for _, s := range servers {
+		out = append(out, acp.McpServerStdio{
+			Type:    "stdio",
+			Name:    s.Name,
+			Command: exe,
+			Args:    s.Args,
+			Env:     []acp.EnvVariable{},
+		})
+	}
+	return out
+}
+
+func (a *App) chatWorkspace(id string) string {
+	m := a.chats()
+	if m == nil {
+		return ""
+	}
+	for _, c := range m.List() {
+		if c.ID == id {
+			return c.Workspace
+		}
+	}
+	return ""
+}
+
+// mcpServerDefs 按工作区组装 archive / ssh MCP 定义（command 由调用方填可执行路径）。
+func (a *App) mcpServerDefs(ws, archiveRef string) ([]mcparchive.ServerDef, bool) {
+	a.mu.Lock()
+	archiveHub := a.archiveHub
+	sshHub := a.sshHub
+	a.mu.Unlock()
+
+	var servers []mcparchive.ServerDef
+	if archiveHub != nil && archiveRef != "" {
+		servers = append(servers, mcparchive.ServerDef{
+			Name: "kshell",
+			Args: []string{"mcp-archive", "--url", archiveHub.URL, "--token", archiveHub.Token, "--ref", archiveRef},
+		})
+	}
+	if sshHub != nil && ws != "" && len(a.allowAgentConnections(ws)) > 0 {
+		servers = append(servers, mcparchive.ServerDef{
+			Name: "kshell-ssh",
+			Args: []string{
+				"mcp-ssh",
+				"--hub-url", sshHub.URL,
+				"--token", sshHub.Token,
+				"--workspace", ws,
+			},
+		})
+	}
+	if len(servers) == 0 {
+		return nil, false
+	}
+	return servers, true
 }
 
 func (a *App) mcpConfigDir() string {

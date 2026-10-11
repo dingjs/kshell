@@ -135,10 +135,10 @@ func TestHandleToolsListAndCall(t *testing.T) {
 }
 
 func TestMainRequiresToken(t *testing.T) {
-	if err := Main([]string{}); err == nil || !strings.Contains(err.Error(), "token") {
+	if _, err := backendFromFlags([]string{}); err == nil || !strings.Contains(err.Error(), "token") {
 		t.Fatalf("err=%v", err)
 	}
-	if err := Main([]string{"--token", "  "}); err == nil {
+	if _, err := backendFromFlags([]string{"--token", "  "}); err == nil {
 		t.Fatal("expected error for blank token")
 	}
 }

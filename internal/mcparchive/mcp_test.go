@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,24 @@ func TestHandleToolsListAndSuggest(t *testing.T) {
 	}
 	if _, ok := Handle([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`), nil); ok {
 		t.Fatal("notification should not respond")
+	}
+}
+
+func TestWriteServersMerge(t *testing.T) {
+	path := t.TempDir() + "/mcp.json"
+	err := WriteServers(path, []ServerDef{
+		{Name: "kshell", Command: "exe", Args: []string{"mcp-archive"}},
+		{Name: "kshell-ssh", Command: "exe", Args: []string{"mcp-ssh", "--token", "t"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"kshell-ssh"`)) || !bytes.Contains(raw, []byte(`"kshell"`)) {
+		t.Fatalf("body=%s", raw)
 	}
 }
 

@@ -137,6 +137,7 @@ type App struct {
 	// 归档名单、本机 MCP 回调，以及「会话还没落盘就点了归档」的待绑定 ref。
 	archiveStore   *sessionarchive.Store
 	archiveHub     *mcparchive.Hub
+	sshHub         *SSHHub
 	pendingArchive map[string]bool
 	hooksOnce      sync.Once
 	// keepInstallTools：安装/卸载刚用 DetectAll 写过 a.tools。进行中的 runScan
@@ -464,11 +465,16 @@ var runShutdownCleanup = func(a *App) {
 		m.CloseAll()
 	}
 	a.mu.Lock()
-	hub := a.archiveHub
+	archiveHub := a.archiveHub
+	sshHub := a.sshHub
 	a.archiveHub = nil
+	a.sshHub = nil
 	a.mu.Unlock()
-	if hub != nil {
-		hub.Close()
+	if archiveHub != nil {
+		archiveHub.Close()
+	}
+	if sshHub != nil {
+		sshHub.Close()
 	}
 }
 

@@ -31,19 +31,38 @@ func PrependConfig(toolID, configPath string, args []string) []string {
 	return append(out, args...)
 }
 
-// WriteConfig 写出 Claude Code 认识的 mcpServers JSON。
+// ServerDef 是 Claude --mcp-config JSON 里的一项 stdio 服务。
+type ServerDef struct {
+	Name    string
+	Command string
+	Args    []string
+}
+
+// WriteConfig 写出 Claude Code 认识的 mcpServers JSON（仅 kshell archive）。
 func WriteConfig(path, command string, args []string) error {
-	if args == nil {
-		args = []string{}
+	return WriteServers(path, []ServerDef{{Name: "kshell", Command: command, Args: args}})
+}
+
+// WriteServers 写出含多个 mcpServers 项的配置文件。
+func WriteServers(path string, servers []ServerDef) error {
+	if len(servers) == 0 {
+		return fmt.Errorf("mcparchive: empty servers")
 	}
-	payload := map[string]any{
-		"mcpServers": map[string]any{
-			"kshell": map[string]any{
-				"command": command,
-				"args":    args,
-			},
-		},
+	inner := make(map[string]any, len(servers))
+	for _, s := range servers {
+		args := s.Args
+		if args == nil {
+			args = []string{}
+		}
+		if s.Name == "" || s.Command == "" {
+			return fmt.Errorf("mcparchive: invalid server %q", s.Name)
+		}
+		inner[s.Name] = map[string]any{
+			"command": s.Command,
+			"args":    args,
+		}
 	}
+	payload := map[string]any{"mcpServers": inner}
 	b, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
