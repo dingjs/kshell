@@ -18,6 +18,7 @@ import (
 	"github.com/yangk/kshell/internal/cursoragent"
 	"github.com/yangk/kshell/internal/desktop"
 	"github.com/yangk/kshell/internal/mcparchive"
+	"github.com/yangk/kshell/internal/mcpssh"
 	"github.com/yangk/kshell/internal/remote"
 )
 
@@ -96,6 +97,13 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "mcp-archive" {
 		if err := mcparchive.Main(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "mcp-ssh" {
+		if err := mcpssh.Main(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
