@@ -6,10 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/yangk/kshell/internal/remote"
 	remotefs "github.com/yangk/kshell/internal/remote/fs"
@@ -17,10 +20,43 @@ import (
 )
 
 // SSHHub 是本机 SSH MCP 代理：mcp-ssh 子进程经 Bearer 调此处，密码不离开桌面进程。
+// 令牌按工作区签发（token -> workspace），禁止用 A 工作区令牌访问 B 工作区。
 type SSHHub struct {
-	URL   string
-	Token string
-	srv   *http.Server
+	URL string
+	srv *http.Server
+
+	mu     sync.Mutex
+	tokens map[string]string // token -> filepath.Clean(workspace)
+}
+
+// IssueScopedToken 为单一工作区签发 Bearer 令牌；mcp-ssh 注入时每次调用。
+func (h *SSHHub) IssueScopedToken(wsPath string) (string, error) {
+	if h == nil {
+		return "", errors.New("ssh hub not ready")
+	}
+	ws := filepath.Clean(strings.TrimSpace(wsPath))
+	if ws == "" {
+		return "", errors.New("workspace required")
+	}
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(buf)
+	h.mu.Lock()
+	if h.tokens == nil {
+		h.tokens = make(map[string]string)
+	}
+	h.tokens[token] = ws
+	h.mu.Unlock()
+	return token, nil
+}
+
+func (h *SSHHub) workspaceForToken(token string) (string, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ws, ok := h.tokens[token]
+	return ws, ok
 }
 
 // sshHubDeps 抽象 Hub 依赖，便于单测注入 fake。
@@ -71,33 +107,21 @@ func StartSSHHub(app *App) (*SSHHub, error) {
 }
 
 func startSSHHub(d sshHubDeps) (*SSHHub, error) {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return nil, err
-	}
-	token := hex.EncodeToString(buf)
 	mux := http.NewServeMux()
-	h := &SSHHub{Token: token}
-
-	auth := func(w http.ResponseWriter, r *http.Request) bool {
-		if r.Header.Get("Authorization") != "Bearer "+token {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return false
-		}
-		return true
-	}
+	h := &SSHHub{tokens: make(map[string]string)}
 
 	mux.HandleFunc("/ssh/list", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if !auth(w, r) {
-			return
-		}
-		ws, err := hubWorkspace(r)
+		wsRaw, err := hubWorkspace(r)
 		if err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		ws, ok := h.requireTokenWorkspace(w, r, wsRaw)
+		if !ok {
 			return
 		}
 		conns := d.allowAgent(ws)
@@ -109,10 +133,8 @@ func startSSHHub(d sshHubDeps) (*SSHHub, error) {
 	})
 
 	mux.HandleFunc("/ssh/exec", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !auth(w, r) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		var body struct {
@@ -124,7 +146,11 @@ func startSSHHub(d sshHubDeps) (*SSHHub, error) {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		c, ok := d.resolveAgentConn(body.Workspace, body.ConnectionID)
+		ws, ok := h.requireTokenWorkspace(w, r, body.Workspace)
+		if !ok {
+			return
+		}
+		c, ok := d.resolveAgentConn(ws, body.ConnectionID)
 		if !ok {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -142,10 +168,8 @@ func startSSHHub(d sshHubDeps) (*SSHHub, error) {
 	})
 
 	mux.HandleFunc("/ssh/read", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !auth(w, r) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		var body struct {
@@ -158,7 +182,11 @@ func startSSHHub(d sshHubDeps) (*SSHHub, error) {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		c, ok := d.resolveAgentConn(body.Workspace, body.ConnectionID)
+		ws, ok := h.requireTokenWorkspace(w, r, body.Workspace)
+		if !ok {
+			return
+		}
+		c, ok := d.resolveAgentConn(ws, body.ConnectionID)
 		if !ok {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -175,10 +203,8 @@ func startSSHHub(d sshHubDeps) (*SSHHub, error) {
 	})
 
 	mux.HandleFunc("/ssh/write", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !auth(w, r) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		var body struct {
@@ -192,7 +218,11 @@ func startSSHHub(d sshHubDeps) (*SSHHub, error) {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		c, ok := d.resolveAgentConn(body.Workspace, body.ConnectionID)
+		ws, ok := h.requireTokenWorkspace(w, r, body.Workspace)
+		if !ok {
+			return
+		}
+		c, ok := d.resolveAgentConn(ws, body.ConnectionID)
 		if !ok {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -233,6 +263,27 @@ func (d sshHubDeps) resolveAgentConn(ws, id string) (remote.Connection, bool) {
 		}
 	}
 	return remote.Connection{}, false
+}
+
+// requireTokenWorkspace 校验 Bearer 且请求 workspace 与令牌绑定工作区一致（规范化后）。
+func (h *SSHHub) requireTokenWorkspace(w http.ResponseWriter, r *http.Request, reqWS string) (string, bool) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	bound, ok := h.workspaceForToken(token)
+	if !ok || token == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+	reqClean := filepath.Clean(strings.TrimSpace(reqWS))
+	if reqClean == "" || reqClean != bound {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return "", false
+	}
+	return bound, true
 }
 
 func hubWorkspace(r *http.Request) (string, error) {

@@ -39,8 +39,20 @@ func TestScanSSHClientConfigsWithStore(t *testing.T) {
 	if got == nil {
 		t.Fatal("应返回非 nil 切片")
 	}
-	// 本机扫描结果因环境而异；只验证不 panic 且类型正确。
-	_ = got
+	for _, c := range got {
+		if c.Password != "" {
+			t.Fatalf("Scan 响应不得含 Password: %+v", c)
+		}
+	}
+}
+
+func TestScanSSHClientConfigsRedactsPassword(t *testing.T) {
+	redacted := clients.RedactPasswords([]clients.ClientCandidate{
+		{Host: "10.0.0.1", Password: "must-not-leak"},
+	})
+	if len(redacted) != 1 || redacted[0].Password != "" {
+		t.Fatalf("RedactPasswords: %+v", redacted)
+	}
 }
 
 func TestImportSSHConnectionsMissingWorkspace(t *testing.T) {
@@ -105,8 +117,8 @@ func TestImportSSHConnectionsAddsAndDedupes(t *testing.T) {
 	}
 
 	b := byHost["10.0.0.21"]
-	if b.Password != "secret" || b.Port != 22 || b.AllowAgent {
-		t.Fatalf("第二条字段不符: %+v", b)
+	if b.Password != "" || b.Port != 22 || b.AllowAgent {
+		t.Fatalf("Import 忽略前端 Password（无 SourceFile）: %+v", b)
 	}
 
 	again, err := app.ImportSSHConnections(ws, items[:1])
@@ -126,6 +138,20 @@ func TestImportSSHConnectionsAddsAndDedupes(t *testing.T) {
 	}
 	if count20 != 1 {
 		t.Fatalf("存储中 10.0.0.20 应仅 1 条, got %d", count20)
+	}
+}
+
+func TestImportSSHConnectionsAllAddFails(t *testing.T) {
+	app, ws := newImportApp(t)
+	_, err := app.ImportSSHConnections(ws, []clients.ClientCandidate{
+		{
+			Host:         "10.0.0.99",
+			IdentityFile: "-----BEGIN PRIVATE KEY-----",
+			Source:       "manual",
+		},
+	})
+	if !errors.Is(err, errImportAllFailed) {
+		t.Fatalf("err = %v, want errImportAllFailed", err)
 	}
 }
 

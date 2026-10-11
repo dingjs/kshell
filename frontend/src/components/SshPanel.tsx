@@ -172,6 +172,10 @@ export default function SshPanel({
     setFormError('');
     try {
       const prev = form.ID ? conns?.find((c) => c.ID === form.ID) : undefined;
+      let workspace = prev?.Workspace ?? wsPath;
+      if (form.AllowAgent && !prev?.Workspace?.trim()) {
+        workspace = wsPath;
+      }
       const saved = await upsertConnection({
         ID: form.ID,
         Name: form.Name.trim(),
@@ -180,7 +184,7 @@ export default function SshPanel({
         Port: port,
         IdentityFile: form.IdentityFile.trim(),
         Password: form.Password,
-        Workspace: prev?.Workspace ?? wsPath,
+        Workspace: workspace,
         Source: prev?.Source ?? '',
         SourceFile: prev?.SourceFile ?? '',
         Verified: prev?.Verified ?? false,

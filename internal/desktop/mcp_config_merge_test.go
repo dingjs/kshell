@@ -21,7 +21,7 @@ func TestMCPServerDefsMergeArchiveAndSSH(t *testing.T) {
 	}
 	app := NewAppWith(Options{Store: store})
 	app.archiveHub = &mcparchive.Hub{URL: "http://127.0.0.1:1", Token: "tok-a"}
-	app.sshHub = &SSHHub{URL: "http://127.0.0.1:2", Token: "tok-s"}
+	app.sshHub = &SSHHub{URL: "http://127.0.0.1:2", tokens: map[string]string{}}
 
 	defs, ok := app.mcpServerDefs(ws, "terminal:t1")
 	if !ok || len(defs) != 2 {
@@ -69,7 +69,7 @@ func TestMCPServerDefsSkipsSSHWithoutAllowAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := NewAppWith(Options{Store: store})
-	app.sshHub = &SSHHub{URL: "http://127.0.0.1:2", Token: "tok-s"}
+	app.sshHub = &SSHHub{URL: "http://127.0.0.1:2", tokens: map[string]string{}}
 	defs, ok := app.mcpServerDefs(ws, "")
 	if ok || len(defs) != 0 {
 		t.Fatalf("ok=%v defs=%+v", ok, defs)

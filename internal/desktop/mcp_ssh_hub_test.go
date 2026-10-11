@@ -61,9 +61,13 @@ func TestSSHHubExecRejectsNonAllowAgent(t *testing.T) {
 	}
 	t.Cleanup(h.Close)
 
+	tok, err := h.IssueScopedToken(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
 	body := `{"workspace":"` + strings.ReplaceAll(ws, `\`, `\\`) + `","connection_id":"no","command":"true"}`
 	req, _ := http.NewRequest(http.MethodPost, h.URL+"/ssh/exec", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+h.Token)
+	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -101,8 +105,12 @@ func TestSSHHubExecRejectsNonAllowAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(h2.Close)
+	tok2, err := h2.IssueScopedToken(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req2, _ := http.NewRequest(http.MethodPost, h2.URL+"/ssh/exec", strings.NewReader(bodyOK))
-	req2.Header.Set("Authorization", "Bearer "+h2.Token)
+	req2.Header.Set("Authorization", "Bearer "+tok2)
 	req2.Header.Set("Content-Type", "application/json")
 	res2, err := http.DefaultClient.Do(req2)
 	if err != nil {
@@ -129,8 +137,12 @@ func TestSSHHubListOmitsPassword(t *testing.T) {
 	}
 	t.Cleanup(h.Close)
 
+	tok, err := h.IssueScopedToken(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req, _ := http.NewRequest(http.MethodPost, h.URL+"/ssh/list", bytes.NewReader([]byte(`{"workspace":"`+strings.ReplaceAll(ws, `\`, `\\`)+`"}`)))
-	req.Header.Set("Authorization", "Bearer "+h.Token)
+	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -145,5 +157,34 @@ func TestSSHHubListOmitsPassword(t *testing.T) {
 	}
 	if len(payload.Connections) != 1 || payload.Connections[0].Password != "" {
 		t.Fatalf("connections=%+v", payload.Connections)
+	}
+}
+
+func TestSSHHubRejectsWorkspaceMismatch(t *testing.T) {
+	wsA := filepath.Clean(`D:\proj\a`)
+	wsB := filepath.Clean(`D:\proj\b`)
+	h, err := startSSHHub(sshHubDeps{
+		allowAgent: func(string) []remote.Connection { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(h.Close)
+
+	tok, err := h.IssueScopedToken(wsA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"workspace":"` + strings.ReplaceAll(wsB, `\`, `\\`) + `"}`
+	req, _ := http.NewRequest(http.MethodPost, h.URL+"/ssh/list", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", res.StatusCode)
 	}
 }

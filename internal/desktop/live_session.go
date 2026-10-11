@@ -169,15 +169,17 @@ func (a *App) mcpServerDefs(ws, archiveRef string) ([]mcparchive.ServerDef, bool
 		})
 	}
 	if sshHub != nil && ws != "" && len(a.allowAgentConnections(ws)) > 0 {
-		servers = append(servers, mcparchive.ServerDef{
-			Name: "kshell-ssh",
-			Args: []string{
-				"mcp-ssh",
-				"--hub-url", sshHub.URL,
-				"--token", sshHub.Token,
-				"--workspace", ws,
-			},
-		})
+		if tok, err := sshHub.IssueScopedToken(ws); err == nil && tok != "" {
+			servers = append(servers, mcparchive.ServerDef{
+				Name: "kshell-ssh",
+				Args: []string{
+					"mcp-ssh",
+					"--hub-url", sshHub.URL,
+					"--token", tok,
+					"--workspace", ws,
+				},
+			})
+		}
 	}
 	if len(servers) == 0 {
 		return nil, false

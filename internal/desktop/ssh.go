@@ -122,6 +122,9 @@ func (a *App) UpsertConnection(c remote.Connection) (remote.Connection, error) {
 	if store == nil {
 		return remote.Connection{}, errNotReady
 	}
+	if c.AllowAgent && strings.TrimSpace(c.Workspace) == "" {
+		c.AllowAgent = false
+	}
 	if strings.TrimSpace(c.ID) == "" {
 		c.Source = "manual"
 		return store.Add(c)

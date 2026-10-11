@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -9,9 +10,13 @@ import (
 	"github.com/yangk/kshell/internal/remote/clients"
 )
 
-var errMissingWorkspace = errors.New("err.ssh.missing_workspace")
+var (
+	errMissingWorkspace = errors.New("err.ssh.missing_workspace")
+	errImportAllFailed  = errors.New("err.ssh.import_all_failed")
+)
 
 // ScanSSHClientConfigs 聚合本机 SSH 客户端配置候选；Store 未就绪时返回空切片。
+// 响应不含 Password（NeedsPassword 仍保留）。
 func (a *App) ScanSSHClientConfigs() []clients.ClientCandidate {
 	if a.snapshot().Store == nil {
 		return []clients.ClientCandidate{}
@@ -20,11 +25,12 @@ func (a *App) ScanSSHClientConfigs() []clients.ClientCandidate {
 	if out == nil {
 		return []clients.ClientCandidate{}
 	}
-	return out
+	return clients.RedactPasswords(out)
 }
 
 // ImportSSHConnections 将勾选的客户端候选写入连接存储，绑定到 wsPath 工作区。
 // 同 workspace+host+user+port 已存在则跳过；AllowAgent 固定为 false。
+// 忽略前端传来的 Password，有 SourceFile 时在服务端再解析一次。
 func (a *App) ImportSSHConnections(wsPath string, items []clients.ClientCandidate) ([]remote.Connection, error) {
 	store := a.snapshot().Store
 	if store == nil {
@@ -37,6 +43,7 @@ func (a *App) ImportSSHConnections(wsPath string, items []clients.ClientCandidat
 	ws := filepath.Clean(wsPath)
 
 	var added []remote.Connection
+	var addFailures int
 	for _, item := range items {
 		if strings.TrimSpace(item.Host) == "" {
 			continue
@@ -59,14 +66,18 @@ func (a *App) ImportSSHConnections(wsPath string, items []clients.ClientCandidat
 			SourceFile:   item.SourceFile,
 			AllowAgent:   false,
 		}
-		if item.Password != "" {
-			conn.Password = item.Password
+		if pw := clients.PasswordFromSourceFile(item.Source, item.SourceFile); pw != "" {
+			conn.Password = pw
 		}
 		saved, err := store.Add(conn)
 		if err != nil {
+			addFailures++
 			continue
 		}
 		added = append(added, saved)
+	}
+	if addFailures > 0 && len(added) == 0 {
+		return nil, fmt.Errorf("%w|%d", errImportAllFailed, addFailures)
 	}
 	if added == nil {
 		return []remote.Connection{}, nil
