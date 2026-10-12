@@ -130,6 +130,7 @@ export default function SessionList({
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [batchPending, setBatchPending] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const scanState = useAppStore((s) => s.scanState);
   const setScanState = useAppStore((s) => s.setScanState);
@@ -262,6 +263,13 @@ export default function SessionList({
     [visible],
   );
   const allSelected = diskIDs.length > 0 && diskIDs.every((id) => selected.has(id));
+  // 实际会提交的集合：勾选中仍在当前可见磁盘列表里的部分。
+  // 确认弹窗的计数也用它，避免「弹窗显示 3 个、实际只归档 1 个」的口径不一致。
+  const confirmIds = useMemo(() => {
+    if (selected.size === 0) return [];
+    const disk = new Set(diskIDs);
+    return [...selected].filter((id) => disk.has(id));
+  }, [selected, diskIDs]);
   const exitSelectMode = () => {
     setSelectMode(false);
     setSelected(new Set());
@@ -278,8 +286,13 @@ export default function SessionList({
     });
   };
   const runBatch = async () => {
-    // 与当前可见磁盘会话取交集：筛选条件变化后残留的不可见 id 不提交
-    const ids = [...selected].filter((id) => diskIDs.includes(id));
+    // confirmIds 已与当前可见磁盘会话取交集：筛选条件变化后残留的不可见 id 不提交
+    const ids = confirmIds;
+    if (ids.length === 0 || batchPending) {
+      setConfirmOpen(false);
+      return;
+    }
+    setBatchPending(true);
     try {
       if (showArchived) {
         const changed = await batchRestoreSessions(ids);
@@ -299,6 +312,7 @@ export default function SessionList({
       notify(t('ui.session_list.batch_failed', { err: backendError(e) }), 'error');
     } finally {
       setConfirmOpen(false);
+      setBatchPending(false);
     }
   };
 
@@ -601,14 +615,14 @@ export default function SessionList({
             showArchived
               ? 'ui.session_list.batch_restore_confirm_body'
               : 'ui.session_list.batch_archive_confirm_body',
-            { count: selected.size },
+            { count: confirmIds.length },
           )}
         </p>
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>
+          <Button variant="ghost" size="sm" disabled={batchPending} onClick={() => setConfirmOpen(false)}>
             {t('ui.session_list.batch_cancel')}
           </Button>
-          <Button size="sm" onClick={() => void runBatch()}>
+          <Button size="sm" disabled={batchPending || confirmIds.length === 0} onClick={() => void runBatch()}>
             {t('ui.session_list.batch_confirm_ok')}
           </Button>
         </div>
