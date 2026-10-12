@@ -20,7 +20,13 @@ function wsBaseName(ws: string): string {
   return i >= 0 ? n.slice(i + 1) : n;
 }
 
-export default function ActiveTerminalsPanel({ wsPath }: { wsPath: string }) {
+export default function ActiveTerminalsPanel({
+  wsPath,
+  onNewShell,
+}: {
+  wsPath: string;
+  onNewShell?: () => void;
+}) {
   const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
   const terminals = useAppStore((s) => s.terminals);
@@ -42,7 +48,18 @@ export default function ActiveTerminalsPanel({ wsPath }: { wsPath: string }) {
 
   return (
     <div className="flex flex-col gap-2.5 text-sm">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-1.5">
+        {onNewShell && (
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label={t('ui.terminal.new')}
+            title={t('ui.terminal.new_local')}
+            onClick={onNewShell}
+          >
+            +
+          </Button>
+        )}
         <Button size="sm" variant="secondary" onClick={() => setShowAll((v) => !v)}>
           {showAll
             ? t('ui.workspace.active_terminals_view_current')

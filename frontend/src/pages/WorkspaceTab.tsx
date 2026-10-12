@@ -778,7 +778,7 @@ export default function WorkspaceTabView({ tab, visible }: { tab: WorkspaceTab; 
           <SshPanel wsPath={tab.id} onOpenRemote={handleOpenRemote} />
         </div>
         <div className={cn('min-h-0 flex-1 overflow-y-auto', rightPane !== 'terminal' && 'hidden')}>
-          <ActiveTerminalsPanel wsPath={tab.id} />
+          <ActiveTerminalsPanel wsPath={tab.id} onNewShell={handleNewShell} />
         </div>
       </aside>
     </div>
