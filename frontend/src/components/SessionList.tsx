@@ -1,9 +1,12 @@
 // 会话列表（工作区页签左栏）：展示当前工作区的历史会话。
 // 行点击与中心区页签/会话预览联动；未激活用小图标激活，已恢复只标状态。
 // 数据流与首页一致：先渲染缓存（GetSessions），收到 "scan:done" 后重调刷新。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useTranslation } from 'react-i18next';
 import {
+  batchArchiveSessions,
+  batchRestoreSessions,
   getRemoteSessions,
   getSessions,
   isSSHWorkspaceRef,
@@ -22,6 +25,8 @@ import { resolveAgentActivity } from '../state/agentActivity';
 import { useAppStore } from '../state/store';
 import AgentActivityIcon from './AgentActivityIcon';
 import WorkspaceSearch from './WorkspaceSearch';
+import { Button } from './ui/button';
+import { Dialog } from './ui/dialog';
 import { EmptyState } from './ui/empty-state';
 import { Skeleton } from './ui/skeleton';
 import { ToolDot } from './ui/tool-dot';
@@ -122,6 +127,10 @@ export default function SessionList({
   const [remoteFailed, setRemoteFailed] = useState(false);
   const [query, setQuery] = useState('');
   const [toolFilter, setToolFilter] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
   const scanState = useAppStore((s) => s.scanState);
   const setScanState = useAppStore((s) => s.setScanState);
   const notify = useAppStore((s) => s.notify);
@@ -247,6 +256,76 @@ export default function SessionList({
       );
   }, [pooled, query, toolFilter]);
 
+  // —— 批量多选：只收集磁盘会话 ID，live 行（Path 以 live: 开头）不可选 ——
+  const diskIDs = useMemo(
+    () => visible.filter((s) => !s.Path.startsWith('live:')).map((s) => s.ID),
+    [visible],
+  );
+  const allSelected = diskIDs.length > 0 && diskIDs.every((id) => selected.has(id));
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(diskIDs));
+  };
+  const toggleRow = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const runBatch = async () => {
+    // 与当前可见磁盘会话取交集：筛选条件变化后残留的不可见 id 不提交
+    const ids = [...selected].filter((id) => diskIDs.includes(id));
+    try {
+      if (showArchived) {
+        const changed = await batchRestoreSessions(ids);
+        const { archivedIDs, setArchivedIDs } = useAppStore.getState();
+        const drop = new Set(ids);
+        setArchivedIDs(archivedIDs.filter((id) => !drop.has(id)));
+        notify(t('ui.session_list.batch_restore_done', { count: changed }), 'success');
+      } else {
+        const changed = await batchArchiveSessions(ids);
+        const { archivedIDs, setArchivedIDs } = useAppStore.getState();
+        setArchivedIDs([...new Set([...archivedIDs, ...ids])]);
+        notify(t('ui.session_list.batch_done', { count: changed }), 'success');
+      }
+      setSelected(new Set());
+      setSelectMode(false);
+    } catch (e) {
+      notify(t('ui.session_list.batch_failed', { err: backendError(e) }), 'error');
+    } finally {
+      setConfirmOpen(false);
+    }
+  };
+
+  // 半选态：有勾选但未全选。分母与 allSelected 一致（仅磁盘会话），否则 live 行会让
+  // checked 与 indeterminate 并存，视觉半选但点击却是全取消。
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selected.size > 0 && !allSelected;
+    }
+  }, [selected, allSelected]);
+
+  // 切换工作区/归档视图时退出多选，避免残留跨列表的勾选
+  useEffect(() => {
+    setSelectMode(false);
+    setSelected(new Set());
+  }, [workspacePath, showArchived]);
+
+  // Esc 退出选择模式（确认弹窗打开时交给 Dialog 自己处理）
+  useEffect(() => {
+    if (!selectMode || confirmOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitSelectMode();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectMode, confirmOpen]);
+
   return (
     <TooltipProvider delayDuration={300}>
       {/* 滚动隔离：根容器撑满左栏剩余高度，搜索框与 chips 固定，仅列表区内部滚动 */}
@@ -272,7 +351,32 @@ export default function SessionList({
             {label}
           </button>
         ))}
+        <button
+          type="button"
+          className={cn(chipClass(selectMode), 'disabled:pointer-events-none disabled:opacity-50')}
+          aria-pressed={selectMode}
+          aria-label={t('ui.session_list.select_mode_aria')}
+          disabled={visible.length === 0}
+          onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+        >
+          {t('ui.session_list.select_mode')}
+        </button>
       </div>
+      {selectMode && (
+        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            className="accent-primary"
+            aria-label={t('ui.session_list.select_all')}
+            checked={allSelected}
+            onChange={toggleAll}
+          />
+          <span>
+            {t('ui.session_list.selected_count', { selected: selected.size, total: visible.length })}
+          </span>
+        </div>
+      )}
       {/* 空态/骨架/列表三分支统一包进滚动容器：固定头部（搜索、chips）不随之滚动 */}
       <div className="min-h-0 flex-1 overflow-y-auto">
       {visible.length === 0 ? (
@@ -303,15 +407,38 @@ export default function SessionList({
                 ? { ID: liveTerm.ID, Status: liveTerm.Status, kind: 'terminal' as const }
                 : findOpenedForSession(s.ID, chats, terminals);
             const restored = !!liveID || isRestored(s.ID, chats, terminals);
-            const selected = selectedSessionID === s.ID;
+            const active = selectedSessionID === s.ID;
             const title = displayTitle(s.Title);
             return (
               <li
                 key={s.ID}
-                className={cn(LIST_ROW, 'cursor-pointer p-2', selected && LIST_ROW_ACTIVE)}
-                onClick={() => onSelectRow?.(s)}
+                className={cn(
+                  LIST_ROW,
+                  'cursor-pointer p-2',
+                  selectMode && 'flex items-start gap-2',
+                  active && LIST_ROW_ACTIVE,
+                )}
+                onClick={() => {
+                  // 选择模式下磁盘行点击 = 切换勾选；live 行仍走 onSelectRow
+                  if (selectMode && !liveID) {
+                    toggleRow(s.ID);
+                    return;
+                  }
+                  onSelectRow?.(s);
+                }}
               >
-                <div className="flex min-w-0 flex-col gap-1.5">
+                {selectMode && (
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 shrink-0 accent-primary"
+                    aria-label={title || t('ui.session_list.untitled')}
+                    checked={selected.has(s.ID)}
+                    disabled={!!liveID}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleRow(s.ID)}
+                  />
+                )}
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <div className="flex min-w-0 items-center gap-1.5">
                     {showArchived && (
                       <span
@@ -443,8 +570,49 @@ export default function SessionList({
           })}
         </ul>
       )}
+      {/* 选择模式下常驻（含列表为空时）：主按钮因 selected.size===0 自然禁用 */}
+      {selectMode && (
+        <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-card py-2">
+          <Button size="sm" disabled={selected.size === 0} onClick={() => setConfirmOpen(true)}>
+            {t(showArchived ? 'ui.session_list.batch_restore' : 'ui.session_list.batch_archive')}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={exitSelectMode}>
+            {t('ui.session_list.batch_cancel')}
+          </Button>
+        </div>
+      )}
       </div>
       </div>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(next) => {
+          if (!next) setConfirmOpen(false);
+        }}
+      >
+        <DialogPrimitive.Title className="mb-1 text-sm font-medium">
+          {t(
+            showArchived
+              ? 'ui.session_list.batch_restore_confirm_title'
+              : 'ui.session_list.batch_archive_confirm_title',
+          )}
+        </DialogPrimitive.Title>
+        <p className="mb-3 text-xs leading-5 text-muted-foreground">
+          {t(
+            showArchived
+              ? 'ui.session_list.batch_restore_confirm_body'
+              : 'ui.session_list.batch_archive_confirm_body',
+            { count: selected.size },
+          )}
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>
+            {t('ui.session_list.batch_cancel')}
+          </Button>
+          <Button size="sm" onClick={() => void runBatch()}>
+            {t('ui.session_list.batch_confirm_ok')}
+          </Button>
+        </div>
+      </Dialog>
     </TooltipProvider>
   );
 }

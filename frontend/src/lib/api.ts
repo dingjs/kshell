@@ -594,6 +594,8 @@ interface AppBindings {
   ConfirmArchive(ref: string): Promise<void>;
   ArchiveSession(id: string): Promise<void>;
   RestoreSession(id: string): Promise<void>;
+  BatchArchiveSessions(ids: string[]): Promise<number>;
+  BatchRestoreSessions(ids: string[]): Promise<number>;
   ChatHistory(id: string): Promise<ChatUpdate[]>;
 }
 
@@ -1708,6 +1710,19 @@ export async function restoreSession(id: string): Promise<void> {
   const a = app();
   if (!a) return;
   await a.RestoreSession(id);
+}
+
+// 批量归档/恢复，返回后端实际变更数。
+export async function batchArchiveSessions(ids: string[]): Promise<number> {
+  const a = app();
+  if (!a) return 0;
+  return a.BatchArchiveSessions(ids);
+}
+
+export async function batchRestoreSessions(ids: string[]): Promise<number> {
+  const a = app();
+  if (!a) return 0;
+  return a.BatchRestoreSessions(ids);
 }
 
 export function onChatUpdate(cb: (p: { id: string; update: ChatUpdate }) => void): () => void {

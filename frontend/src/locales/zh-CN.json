@@ -440,7 +440,22 @@
       "restore_title": "还原到开发列表",
       "archive": "归档",
       "restored": "已恢复",
-      "activate": "激活"
+      "activate": "激活",
+      "select_mode": "多选",
+      "select_all": "全选",
+      "selected_count": "已选 {{selected}} / 共 {{total}}",
+      "batch_archive": "归档所选",
+      "batch_restore": "恢复所选",
+      "batch_cancel": "取消",
+      "batch_archive_confirm_title": "归档会话",
+      "batch_restore_confirm_title": "恢复会话",
+      "batch_archive_confirm_body": "即将归档 {{count}} 个会话，之后可在「已归档」中恢复。",
+      "batch_restore_confirm_body": "即将恢复 {{count}} 个会话。",
+      "batch_confirm_ok": "确认",
+      "batch_done": "已归档 {{count}} 个会话",
+      "batch_restore_done": "已恢复 {{count}} 个会话",
+      "batch_failed": "批量操作失败：{{err}}",
+      "select_mode_aria": "多选模式"
     },
     "archive_suggest": {
       "title": "归档这个会话？",

@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   getSessions: vi.fn(),
   getRemoteSessions: vi.fn(),
   scanRemoteSessions: vi.fn(),
+  batchArchiveSessions: vi.fn(),
+  batchRestoreSessions: vi.fn(),
   isSSHWorkspaceRef: (p: string) => typeof p === 'string' && p.startsWith('ssh://'),
   onScanDone: vi.fn(),
 }));
@@ -598,6 +600,228 @@ describe('SessionList agent 活动图标', () => {
         (t) => t.tone === 'error' && t.title.includes(tt('ui.session_list.remote_scan_failed').split('{{')[0]),
       ),
     ).toBe(true);
+  });
+});
+
+describe('SessionList 批量多选', () => {
+  // tt 不做插值，测试里手动替换占位符（沿用 msgs 的做法）
+  const fmt = (key: string, params: Record<string, string | number>) =>
+    Object.entries(params).reduce(
+      (acc, [k, v]) => acc.split(`{{${k}}}`).join(String(v)),
+      tt(key),
+    );
+
+  const liveTerm = () =>
+    terminal({
+      ID: 't9',
+      Kind: 'new',
+      SessionID: '',
+      Title: '修复登录空指针',
+      Prompted: true,
+      Workspace: 'D:\\proj-a',
+      ToolID: 'claude',
+    });
+
+  // 等列表渲染完成后点「多选」进入选择模式（按钮可访问名来自 aria-label）
+  const enterSelectMode = async () => {
+    await findRow('清理构建缓存');
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.select_mode_aria') }));
+    return screen.getByRole('checkbox', { name: tt('ui.session_list.select_all') });
+  };
+
+  const rowCheckbox = (row: HTMLElement) => within(row).getByRole('checkbox');
+
+  it('进入多选模式：显示全选行与每行复选框，live 行复选框禁用', async () => {
+    useAppStore.setState({ terminals: [liveTerm()] });
+    renderList();
+    const selectAll = await enterSelectMode();
+
+    // 全选行 + 计数文案（live 行计入总数但不参与勾选）
+    expect(selectAll).toBeInTheDocument();
+    expect(
+      screen.getByText(fmt('ui.session_list.selected_count', { selected: 0, total: 4 })),
+    ).toBeInTheDocument();
+
+    // 磁盘行复选框可用，live 行复选框禁用
+    for (const title of ['修复上传白名单', '重构登录页', '清理构建缓存']) {
+      expect(rowCheckbox(await findRow(title))).toBeEnabled();
+    }
+    expect(rowCheckbox(await findRow('修复登录空指针'))).toBeDisabled();
+
+    // 选择模式下磁盘行点击 = 切换勾选，不触发 onSelectRow
+    const row = await findRow('修复上传白名单');
+    fireEvent.click(row);
+    expect(rowCheckbox(row)).toBeChecked();
+    expect(onSelectRow).not.toHaveBeenCalled();
+    // live 行点击仍走 onSelectRow
+    fireEvent.click(await findRow('修复登录空指针'));
+    expect(onSelectRow).toHaveBeenCalledWith(expect.objectContaining({ Title: '修复登录空指针' }));
+  });
+
+  it('全选：可见磁盘会话全部勾选；部分勾选时全选框呈半选态；再点取消全选', async () => {
+    renderList();
+    const selectAll = await enterSelectMode();
+
+    // 勾选一项 → 半选态
+    fireEvent.click(rowCheckbox(await findRow('修复上传白名单')));
+    expect(rowCheckbox(await findRow('修复上传白名单'))).toBeChecked();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+    expect(
+      screen.getByText(fmt('ui.session_list.selected_count', { selected: 1, total: 3 })),
+    ).toBeInTheDocument();
+
+    // 点全选 → 三个磁盘会话全部勾选，半选态消失
+    fireEvent.click(selectAll);
+    for (const title of ['修复上传白名单', '重构登录页', '清理构建缓存']) {
+      expect(rowCheckbox(await findRow(title))).toBeChecked();
+    }
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+    expect(selectAll).toBeChecked();
+    expect(
+      screen.getByText(fmt('ui.session_list.selected_count', { selected: 3, total: 3 })),
+    ).toBeInTheDocument();
+
+    // 再点全选 → 清空
+    fireEvent.click(selectAll);
+    for (const title of ['修复上传白名单', '重构登录页', '清理构建缓存']) {
+      expect(rowCheckbox(await findRow(title))).not.toBeChecked();
+    }
+    expect(selectAll).not.toBeChecked();
+  });
+
+  it('勾选 2 项 → 归档所选 → 确认 → BatchArchiveSessions 以正确 ids 调用，archivedIDs 更新并退出选择模式', async () => {
+    // 故意返回 1（≠ ids.length 2）：验证通知计数用 API 实际变更数而非提交数
+    mocks.batchArchiveSessions.mockResolvedValue(1);
+    renderList();
+    await enterSelectMode();
+
+    fireEvent.click(rowCheckbox(await findRow('修复上传白名单')));
+    fireEvent.click(rowCheckbox(await findRow('清理构建缓存')));
+
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_archive') }));
+    expect(await screen.findByText(tt('ui.session_list.batch_archive_confirm_title'))).toBeInTheDocument();
+    expect(
+      screen.getByText(fmt('ui.session_list.batch_archive_confirm_body', { count: 2 })),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_confirm_ok') }));
+    });
+
+    expect(mocks.batchArchiveSessions).toHaveBeenCalledTimes(1);
+    expect(mocks.batchArchiveSessions).toHaveBeenCalledWith(['s1', 's4']);
+    expect(useAppStore.getState().archivedIDs).toEqual(expect.arrayContaining(['s1', 's4']));
+    expect(useAppStore.getState().toasts.some((toast) =>
+      toast.tone === 'success' &&
+      toast.title === fmt('ui.session_list.batch_done', { count: 1 }),
+    )).toBe(true);
+    // 成功后清空选择并退出选择模式
+    expect(screen.queryByRole('button', { name: tt('ui.session_list.batch_archive') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: tt('ui.session_list.select_all') })).not.toBeInTheDocument();
+  });
+
+  it('live 行存在时全选磁盘会话：全选框为 checked 且非半选态', async () => {
+    useAppStore.setState({ terminals: [liveTerm()] });
+    renderList();
+    const selectAll = await enterSelectMode();
+
+    fireEvent.click(selectAll);
+    // 3 个磁盘会话全部勾选；live 行不参与分母，不出现「半选但点击全取消」的矛盾态
+    for (const title of ['修复上传白名单', '重构登录页', '清理构建缓存']) {
+      expect(rowCheckbox(await findRow(title))).toBeChecked();
+    }
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+    expect(selectAll).toBeChecked();
+  });
+
+  it('提交前与当前可见磁盘会话取交集：过滤后不可见的残留勾选不提交', async () => {
+    mocks.batchArchiveSessions.mockResolvedValue(1);
+    renderList();
+    const selectAll = await enterSelectMode();
+
+    fireEvent.click(selectAll);
+    // 过滤后只剩「清理构建缓存」(s4) 可见，其余勾选为不可见残留
+    fireEvent.change(screen.getByLabelText(tt('ui.session_list.search_aria')), {
+      target: { value: '构建' },
+    });
+    expect(screen.getByText('清理构建缓存')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_archive') }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_confirm_ok') }));
+    });
+
+    expect(mocks.batchArchiveSessions).toHaveBeenCalledTimes(1);
+    expect(mocks.batchArchiveSessions).toHaveBeenCalledWith(['s4']);
+  });
+
+  it('showArchived 下对称：确认后走 BatchRestoreSessions，archivedIDs 移除所选', async () => {
+    mocks.batchRestoreSessions.mockResolvedValue(1);
+    useAppStore.setState({ archivedIDs: ['s2'] });
+    render(<SessionList workspacePath={'D:\\proj-a'} showArchived onRestore={vi.fn()} />);
+    await findRow('重构登录页');
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.select_mode_aria') }));
+
+    fireEvent.click(rowCheckbox(await findRow('重构登录页')));
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_restore') }));
+    expect(await screen.findByText(tt('ui.session_list.batch_restore_confirm_title'))).toBeInTheDocument();
+    expect(
+      screen.getByText(fmt('ui.session_list.batch_restore_confirm_body', { count: 1 })),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_confirm_ok') }));
+    });
+
+    expect(mocks.batchRestoreSessions).toHaveBeenCalledWith(['s2']);
+    expect(useAppStore.getState().archivedIDs).toEqual([]);
+    expect(screen.queryByRole('button', { name: tt('ui.session_list.batch_restore') })).not.toBeInTheDocument();
+  });
+
+  it('API reject → 通知 batch_failed，选择保留、仍处于选择模式', async () => {
+    mocks.batchArchiveSessions.mockRejectedValue(new Error('err.db.write_failed'));
+    renderList();
+    const selectAll = await enterSelectMode();
+
+    fireEvent.click(rowCheckbox(await findRow('修复上传白名单')));
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_archive') }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_confirm_ok') }));
+    });
+
+    expect(
+      useAppStore.getState().toasts.some((toast) =>
+        toast.tone === 'error' &&
+        toast.title.includes(tt('ui.session_list.batch_failed').split('{{')[0]),
+      ),
+    ).toBe(true);
+    // 弹窗关闭但选择与模式保留
+    expect(screen.queryByText(tt('ui.session_list.batch_archive_confirm_title'))).not.toBeInTheDocument();
+    expect(rowCheckbox(await findRow('修复上传白名单'))).toBeChecked();
+    expect(screen.getByRole('button', { name: tt('ui.session_list.batch_archive') })).toBeInTheDocument();
+    expect(
+      screen.getByText(fmt('ui.session_list.selected_count', { selected: 1, total: 3 })),
+    ).toBeInTheDocument();
+    expect((selectAll as HTMLInputElement)).toBeInTheDocument();
+  });
+
+  it('取消按钮清空选择并退出选择模式；空列表时底部操作栏仍渲染、多选入口禁用', async () => {
+    renderList();
+    await enterSelectMode();
+
+    fireEvent.click(rowCheckbox(await findRow('重构登录页')));
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.session_list.batch_cancel') }));
+    expect(screen.queryByRole('checkbox', { name: tt('ui.session_list.select_all') })).not.toBeInTheDocument();
+
+    await enterSelectMode();
+    // 过滤到无匹配 → 多选入口禁用；底部操作栏按 selectMode 渲染，主按钮因未勾选禁用
+    fireEvent.change(screen.getByLabelText(tt('ui.session_list.search_aria')), {
+      target: { value: '不存在' },
+    });
+    const toggle = screen.getByRole('button', { name: tt('ui.session_list.select_mode_aria') });
+    expect(toggle).toBeDisabled();
+    expect(screen.getByRole('button', { name: tt('ui.session_list.batch_archive') })).toBeDisabled();
+    expect(screen.getByRole('button', { name: tt('ui.session_list.batch_cancel') })).toBeInTheDocument();
   });
 });
 

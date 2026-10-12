@@ -440,7 +440,22 @@
       "restore_title": "Restore to development list",
       "archive": "Archive",
       "restored": "Restored",
-      "activate": "Activate"
+      "activate": "Activate",
+      "select_mode": "Select",
+      "select_all": "Select all",
+      "selected_count": "Selected {{selected}} of {{total}}",
+      "batch_archive": "Archive selected",
+      "batch_restore": "Restore selected",
+      "batch_cancel": "Cancel",
+      "batch_archive_confirm_title": "Archive sessions",
+      "batch_restore_confirm_title": "Restore sessions",
+      "batch_archive_confirm_body": "About to archive {{count}} sessions. You can restore them from the archived view later.",
+      "batch_restore_confirm_body": "About to restore {{count}} sessions.",
+      "batch_confirm_ok": "Confirm",
+      "batch_done": "Archived {{count}} sessions",
+      "batch_restore_done": "Restored {{count}} sessions",
+      "batch_failed": "Batch operation failed: {{err}}",
+      "select_mode_aria": "Selection mode"
     },
     "archive_suggest": {
       "title": "Archive this session?",
