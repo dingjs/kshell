@@ -307,6 +307,19 @@ describe('SessionList', () => {
     expect(empty.closest('li')).toBeInTheDocument();
   });
 
+  it('滚动隔离：会话列表包在独立滚动容器中，搜索框与过滤 chips 不在其内', async () => {
+    renderList();
+    const row = await findRow('清理构建缓存');
+    const ul = row.closest('ul');
+    if (!ul) throw new Error('找不到会话列表 ul');
+    // 列表自身撑满剩余高度并在内部滚动（父级无高度约束不影响类名断言）
+    const scroller = ul.parentElement;
+    expect(scroller).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+    // 搜索框与工具 chips 行留在滚动容器外，不随列表滚动
+    const chips = screen.getByLabelText(tt('ui.session_list.filter_aria'));
+    expect(scroller!.contains(chips)).toBe(false);
+  });
+
   it('收到 scan:done 事件后重调 GetSessions 刷新', async () => {
     mocks.getSessions.mockResolvedValueOnce([]).mockResolvedValueOnce(sessions);
     renderList();

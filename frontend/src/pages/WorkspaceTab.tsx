@@ -411,13 +411,14 @@ export default function WorkspaceTabView({ tab, visible }: { tab: WorkspaceTab; 
 
   return (
     <div className="flex min-h-0 flex-1">
+      {/* 滚动隔离：左栏整体不滚动（overflow-hidden），固定新建会话/归档行，仅会话列表内部滚动 */}
       <aside
-        className="flex shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-card p-2.5"
+        className="flex shrink-0 flex-col gap-2 overflow-hidden border-r border-border bg-card p-2.5"
         style={{ width: layout.left }}
         aria-label={tr('ui.workspace.session_sidebar_aria')}
       >
         {/* 「新建会话」本身就是下拉菜单：点开列 agent，选中即启动（不再并排一个工具下拉框） */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="min-w-0 flex-1">
             <NewSessionMenu
               tools={tools}
@@ -439,7 +440,7 @@ export default function WorkspaceTabView({ tab, visible }: { tab: WorkspaceTab; 
           </label>
         </div>
         {tools.length === 0 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="shrink-0 text-xs text-muted-foreground">
             {tr('ui.workspace.no_agent_hint')}
           </p>
         )}

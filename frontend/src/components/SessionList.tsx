@@ -249,9 +249,12 @@ export default function SessionList({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex flex-col gap-2">
-      <WorkspaceSearch value={query} onChange={setQuery} />
-      <div className="flex flex-wrap items-center gap-1" aria-label={t('ui.session_list.filter_aria')}>
+      {/* 滚动隔离：根容器撑满左栏剩余高度，搜索框与 chips 固定，仅列表区内部滚动 */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="shrink-0">
+        <WorkspaceSearch value={query} onChange={setQuery} />
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-1" aria-label={t('ui.session_list.filter_aria')}>
         <button
           className={chipClass(toolFilter === null)}
           aria-pressed={toolFilter === null}
@@ -270,6 +273,8 @@ export default function SessionList({
           </button>
         ))}
       </div>
+      {/* 空态/骨架/列表三分支统一包进滚动容器：固定头部（搜索、chips）不随之滚动 */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {visible.length === 0 ? (
         query.trim() ? (
           <EmptyState title={t('ui.session_list.no_match')} />
@@ -438,6 +443,7 @@ export default function SessionList({
           })}
         </ul>
       )}
+      </div>
       </div>
     </TooltipProvider>
   );
