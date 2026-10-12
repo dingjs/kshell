@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   getModelConfig: vi.fn(),
   setModelConfig: vi.fn(),
   listModelPresets: vi.fn(),
+  fetchAvailableModels: vi.fn(),
   getSessionMode: vi.fn(),
   setSessionMode: vi.fn(),
   getPermissionMode: vi.fn(),
@@ -206,10 +207,12 @@ beforeEach(() => {
     Preset: '',
     OpenAIBaseURL: '',
     AnthropicBaseURL: '',
-    Agents: {},
+    Models: [],
+    ActiveModel: '',
     APIKeySet: false,
   });
   mocks.setModelConfig.mockResolvedValue(undefined);
+  mocks.fetchAvailableModels.mockResolvedValue({ Models: [], Errors: [] });
   mocks.getToolInstallJob.mockResolvedValue({
     ToolID: '',
     Action: '',
@@ -610,13 +613,14 @@ describe('Settings', () => {
     expect(await screen.findByText(tt('ui.settings.permission_mode.bypass_warning'))).toBeInTheDocument();
   });
 
-  it('模型区回填双 URL、密钥掩码、留空保存', async () => {
+  it('模型区回填双 URL、统一模型列表、留空保存', async () => {
     mocks.getModelConfig.mockResolvedValue({
       Enabled: true,
       Preset: 'deepseek',
       OpenAIBaseURL: 'https://oai/',
       AnthropicBaseURL: 'https://ant/',
-      Agents: { claude: 'mimo-v2.5' },
+      Models: ['mimo-v2.5'],
+      ActiveModel: 'mimo-v2.5',
       APIKeySet: true,
     });
     render(<Settings />);
@@ -626,9 +630,7 @@ describe('Settings', () => {
     expect(screen.getByLabelText('Anthropic Base URL')).toHaveValue('https://ant/');
     expect(screen.getByLabelText(tt('ui.settings.model.api_key'))).toHaveValue('');
     expect(screen.getByPlaceholderText(tt('ui.settings.model.api_key_set'))).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(tt('ui.settings.model.agent_model').replace('{{0}}', 'Claude Code')),
-    ).toHaveValue('mimo-v2.5');
+    expect(screen.getByLabelText(tt('ui.settings.model.active_model'))).toHaveValue('mimo-v2.5');
 
     fireEvent.click(screen.getByRole('button', { name: tt('ui.settings.model.save') }));
     await waitFor(() =>
@@ -639,13 +641,83 @@ describe('Settings', () => {
           AnthropicBaseURL: 'https://ant/',
           APIKey: '',
           ClearAPIKey: false,
-          Agents: { claude: 'mimo-v2.5' },
+          Models: ['mimo-v2.5'],
+          ActiveModel: 'mimo-v2.5',
         }),
       ),
     );
   });
 
-  it('选择预设填入双 URL 与空的模型槽', async () => {
+  it('手动添加、设为当前、删除统一模型', async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      Enabled: true,
+      Preset: 'custom',
+      OpenAIBaseURL: '',
+      AnthropicBaseURL: '',
+      Models: ['m1'],
+      ActiveModel: 'm1',
+      APIKeySet: false,
+    });
+    render(<Settings />);
+    goModel();
+
+    // 手动添加
+    await screen.findByLabelText(tt('ui.settings.model.active_model'));
+    fireEvent.change(screen.getByLabelText(tt('ui.settings.model.add_model')), {
+      target: { value: ' m2 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.settings.model.add') }));
+    // 设为当前（m2 行）
+    const rows = screen.getAllByRole('listitem');
+    const m2Row = rows.find((r) => r.textContent?.includes('m2'));
+    expect(m2Row).toBeDefined();
+    fireEvent.click(within(m2Row!).getByRole('button', { name: tt('ui.settings.model.set_active') }));
+    expect(screen.getByLabelText(tt('ui.settings.model.active_model'))).toHaveValue('m2');
+    // 删除 m1
+    const m1Row = screen.getAllByRole('listitem').find((r) => r.textContent?.includes('m1'));
+    fireEvent.click(within(m1Row!).getByRole('button', { name: tt('ui.settings.model.remove') }));
+    expect(screen.queryByRole('listitem', { name: /m1/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.settings.model.save') }));
+    await waitFor(() =>
+      expect(mocks.setModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ Models: ['m2'], ActiveModel: 'm2' }),
+      ),
+    );
+  });
+
+  it('拉取模型后可加入列表', async () => {
+    mocks.fetchAvailableModels.mockResolvedValue({
+      Models: ['m-a', 'm-b'],
+      Errors: ['err.model_fetch.openai_failed'],
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      Enabled: true,
+      Preset: 'custom',
+      OpenAIBaseURL: 'https://oai/',
+      AnthropicBaseURL: 'https://ant/',
+      Models: [],
+      ActiveModel: '',
+      APIKeySet: true,
+    });
+    render(<Settings />);
+    goModel();
+
+    fireEvent.click(await screen.findByRole('button', { name: tt('ui.settings.model.fetch_models') }));
+    // 错误 key 经 translateBackend 展示
+    expect(await screen.findByText(tt('err.model_fetch.openai_failed'))).toBeInTheDocument();
+    const rowA = screen.getAllByRole('listitem').find((r) => r.textContent?.includes('m-a'));
+    fireEvent.click(within(rowA!).getByRole('button', { name: tt('ui.settings.model.add') }));
+
+    fireEvent.click(screen.getByRole('button', { name: tt('ui.settings.model.save') }));
+    await waitFor(() =>
+      expect(mocks.setModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ Models: ['m-a'] }),
+      ),
+    );
+  });
+
+  it('选择预设填入双 URL 与推荐模型', async () => {
     render(<Settings />);
     goModel();
     const sel = await screen.findByLabelText(tt('ui.settings.model.preset'));
@@ -658,9 +730,7 @@ describe('Settings', () => {
     expect(screen.getByLabelText('Anthropic Base URL')).toHaveValue(
       'https://api.deepseek.com/anthropic',
     );
-    expect(
-      screen.getByLabelText(tt('ui.settings.model.agent_model').replace('{{0}}', 'Claude Code')),
-    ).toHaveValue('deepseek-chat');
+    expect(screen.getByLabelText(tt('ui.settings.model.active_model'))).toHaveValue('deepseek-chat');
   });
 
   it('勾选清除密钥时提交 ClearAPIKey', async () => {
@@ -669,7 +739,8 @@ describe('Settings', () => {
       Preset: '',
       OpenAIBaseURL: '',
       AnthropicBaseURL: '',
-      Agents: {},
+      Models: [],
+      ActiveModel: '',
       APIKeySet: true,
     });
     render(<Settings />);

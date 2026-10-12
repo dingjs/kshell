@@ -21,7 +21,7 @@ func newModelApp(t *testing.T) (*App, config.Layout) {
 func TestGetModelConfigNeverLeaksKey(t *testing.T) {
 	app, _ := newModelApp(t)
 	app.mu.Lock()
-	app.opts.Config.Model = config.ModelConfig{APIKey: "secret", Agents: map[string]string{"claude": "m"}}
+	app.opts.Config.Model = config.ModelConfig{APIKey: "secret", Models: []string{"m"}, ActiveModel: "m"}
 	app.mu.Unlock()
 
 	v, err := app.GetModelConfig()
@@ -31,8 +31,8 @@ func TestGetModelConfigNeverLeaksKey(t *testing.T) {
 	if !v.APIKeySet {
 		t.Fatal("APIKeySet 应为 true")
 	}
-	if v.Agents["claude"] != "m" {
-		t.Fatalf("agents = %+v", v.Agents)
+	if len(v.Models) != 1 || v.Models[0] != "m" || v.ActiveModel != "m" {
+		t.Fatalf("models = %+v", v)
 	}
 }
 
@@ -42,8 +42,9 @@ func TestSetModelConfigKeepOverwriteClear(t *testing.T) {
 	if err := app.SetModelConfig(ModelConfigInput{
 		Enabled: true, Preset: "deepseek",
 		OpenAIBaseURL: "https://oai/", AnthropicBaseURL: "https://ant/",
-		APIKey: "k1",
-		Agents: map[string]string{"claude": " m ", "codex": "gpt-x"},
+		APIKey:      "k1",
+		Models:      []string{" m ", "gpt-x", "m", ""},
+		ActiveModel: " gpt-x ",
 	}); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -54,12 +55,15 @@ func TestSetModelConfigKeepOverwriteClear(t *testing.T) {
 	if loaded.Model.OpenAIBaseURL != "https://oai/" || loaded.Model.AnthropicBaseURL != "https://ant/" {
 		t.Fatalf("urls = %+v", loaded.Model)
 	}
-	if loaded.Model.Agents["claude"] != "m" {
-		t.Fatalf("agents 未 TrimSpace: %q", loaded.Model.Agents["claude"])
+	if len(loaded.Model.Models) != 2 || loaded.Model.Models[0] != "m" || loaded.Model.Models[1] != "gpt-x" {
+		t.Fatalf("models 应 TrimSpace/去空/去重: %#v", loaded.Model.Models)
+	}
+	if loaded.Model.ActiveModel != "gpt-x" {
+		t.Fatalf("active_model 未 TrimSpace: %q", loaded.Model.ActiveModel)
 	}
 
 	if err := app.SetModelConfig(ModelConfigInput{
-		Enabled: true, OpenAIBaseURL: "https://oai/", Agents: map[string]string{},
+		Enabled: true, OpenAIBaseURL: "https://oai/", Models: []string{},
 	}); err != nil {
 		t.Fatalf("Set keep: %v", err)
 	}
@@ -68,7 +72,7 @@ func TestSetModelConfigKeepOverwriteClear(t *testing.T) {
 		t.Fatalf("留空应保持密钥，got %q", loaded.Model.APIKey)
 	}
 
-	if err := app.SetModelConfig(ModelConfigInput{Enabled: true, ClearAPIKey: true, Agents: map[string]string{}}); err != nil {
+	if err := app.SetModelConfig(ModelConfigInput{Enabled: true, ClearAPIKey: true, Models: []string{}}); err != nil {
 		t.Fatalf("Set clear: %v", err)
 	}
 	loaded, _ = config.Load(layout)
@@ -90,6 +94,31 @@ func TestListModelPresetsNonEmpty(t *testing.T) {
 	list := app.ListModelPresets()
 	if len(list) < 3 {
 		t.Fatalf("预设过少: %d", len(list))
+	}
+}
+
+func TestModelOptionsUsesActiveModel(t *testing.T) {
+	app, _ := newModelApp(t)
+	app.mu.Lock()
+	app.opts.Config.Model = config.ModelConfig{
+		Enabled: true,
+		OpenAIBaseURL: "https://oai/", AnthropicBaseURL: "https://ant/",
+		APIKey: "k", ActiveModel: "glm-5",
+	}
+	app.mu.Unlock()
+
+	mo := app.modelOptions()
+	for _, toolID := range []string{"claude", "codex", "anything"} {
+		mc, ok := mo.Resolver(toolID)
+		if !ok || mc.Model != "glm-5" || mc.OpenAIBaseURL != "https://oai/" || mc.APIKey != "k" {
+			t.Fatalf("resolver(%s) = %+v ok=%v", toolID, mc, ok)
+		}
+	}
+	app.mu.Lock()
+	app.opts.Config.Model = config.ModelConfig{Enabled: false, ActiveModel: "glm-5"}
+	app.mu.Unlock()
+	if mo := app.modelOptions(); mo.Resolver != nil {
+		t.Fatal("未启用时不应注入")
 	}
 }
 

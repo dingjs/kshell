@@ -135,6 +135,12 @@
       "invalid_session_mode": "Invalid session mode: {{0}}",
       "invalid_permission_mode": "Invalid permission mode: {{0}}"
     },
+    "model_fetch": {
+      "no_endpoint": "No Base URL configured; cannot fetch models",
+      "openai_failed": "Failed to fetch from the OpenAI endpoint",
+      "anthropic_failed": "Failed to fetch from the Anthropic endpoint",
+      "all_failed": "All endpoints failed; check Base URL and API Key"
+    },
     "ssh": {
       "connection_not_found": "Connection not found",
       "no_ssh_binary": "ssh executable not found (on Windows, enable the OpenSSH Client optional feature)",
@@ -320,10 +326,20 @@
         "api_key_set": "Set (leave blank to keep)",
         "api_key_unset": "Not set",
         "clear_key": "Clear key",
-        "agent_model": "{{0}} model",
+        "active_model": "Active model",
+        "models": "Model list (click \"Set active\" to switch the injected model)",
+        "models_empty": "No models yet; add manually or click \"Fetch models\"",
+        "add_model": "Model ID",
+        "add": "Add",
+        "fetch_models": "Fetch models",
+        "fetch_hint": "Fetches from saved endpoints; save URL changes first",
+        "fetching": "Fetching...",
+        "fetch_empty": "The endpoints returned no models",
+        "set_active": "Set active",
+        "remove": "Remove",
         "save": "Save model configuration",
         "apply_recommended": "Apply recommended models",
-        "desc": "On launch, injects the matching protocol endpoint by agent type (Claude→Anthropic, Codex→OpenAI). Does not modify each tool's own config files.",
+        "desc": "On launch, injects the active model and matching protocol endpoints (Claude→Anthropic, Codex→OpenAI). Does not modify each tool's own config files.",
         "saved": "Saved; takes effect for sessions started afterward"
       },
       "tools": {

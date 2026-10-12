@@ -113,37 +113,40 @@ func (a *App) LoadProvidersYAML() (string, error) {
 
 // ModelConfigView 是回传前端的模型配置视图：绝不包含密钥明文。
 type ModelConfigView struct {
-	Enabled          bool              `json:"Enabled"`
-	Preset           string            `json:"Preset"`
-	OpenAIBaseURL    string            `json:"OpenAIBaseURL"`
-	AnthropicBaseURL string            `json:"AnthropicBaseURL"`
-	Agents           map[string]string `json:"Agents"`
-	APIKeySet        bool              `json:"APIKeySet"`
+	Enabled          bool     `json:"Enabled"`
+	Preset           string   `json:"Preset"`
+	OpenAIBaseURL    string   `json:"OpenAIBaseURL"`
+	AnthropicBaseURL string   `json:"AnthropicBaseURL"`
+	Models           []string `json:"Models"`
+	ActiveModel      string   `json:"ActiveModel"`
+	APIKeySet        bool     `json:"APIKeySet"`
 }
 
 // ModelConfigInput 是前端提交的模型配置：APIKey 空串=保持原值，ClearAPIKey 显式清除。
 type ModelConfigInput struct {
-	Enabled          bool              `json:"Enabled"`
-	Preset           string            `json:"Preset"`
-	OpenAIBaseURL    string            `json:"OpenAIBaseURL"`
-	AnthropicBaseURL string            `json:"AnthropicBaseURL"`
-	APIKey           string            `json:"APIKey"`
-	ClearAPIKey      bool              `json:"ClearAPIKey"`
-	Agents           map[string]string `json:"Agents"`
+	Enabled          bool     `json:"Enabled"`
+	Preset           string   `json:"Preset"`
+	OpenAIBaseURL    string   `json:"OpenAIBaseURL"`
+	AnthropicBaseURL string   `json:"AnthropicBaseURL"`
+	APIKey           string   `json:"APIKey"`
+	ClearAPIKey      bool     `json:"ClearAPIKey"`
+	Models           []string `json:"Models"`
+	ActiveModel      string   `json:"ActiveModel"`
 }
 
 func (a *App) GetModelConfig() (ModelConfigView, error) {
 	m := a.snapshot().Config.Model
-	agents := m.Agents
-	if agents == nil {
-		agents = map[string]string{}
+	models := m.Models
+	if models == nil {
+		models = []string{}
 	}
 	return ModelConfigView{
 		Enabled:          m.Enabled,
 		Preset:           m.Preset,
 		OpenAIBaseURL:    m.OpenAIBaseURL,
 		AnthropicBaseURL: m.AnthropicBaseURL,
-		Agents:           agents,
+		Models:           models,
+		ActiveModel:      m.ActiveModel,
 		APIKeySet:        m.APIKey != "",
 	}, nil
 }
@@ -157,9 +160,15 @@ func (a *App) SetModelConfig(in ModelConfigInput) error {
 	if err := validateHTTPURL(ant, "Anthropic Base URL"); err != nil {
 		return err
 	}
-	agents := map[string]string{}
-	for k, v := range in.Agents {
-		agents[k] = strings.TrimSpace(v)
+	models := make([]string, 0, len(in.Models))
+	seen := map[string]bool{}
+	for _, v := range in.Models {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		models = append(models, v)
 	}
 	return a.saveConfig(func(c *config.Config) {
 		c.Model.Enabled = in.Enabled
@@ -167,7 +176,8 @@ func (a *App) SetModelConfig(in ModelConfigInput) error {
 		c.Model.OpenAIBaseURL = oai
 		c.Model.AnthropicBaseURL = ant
 		c.Model.BaseURL = ""
-		c.Model.Agents = agents
+		c.Model.Models = models
+		c.Model.ActiveModel = strings.TrimSpace(in.ActiveModel)
 		switch {
 		case in.ClearAPIKey:
 			c.Model.APIKey = ""
