@@ -358,7 +358,8 @@ export interface ModelConfigView {
   Preset: string;
   OpenAIBaseURL: string;
   AnthropicBaseURL: string;
-  Agents: Record<string, string>;
+  Models: string[];
+  ActiveModel: string;
   APIKeySet: boolean;
 }
 
@@ -370,7 +371,15 @@ export interface ModelConfigInput {
   AnthropicBaseURL: string;
   APIKey: string;
   ClearAPIKey: boolean;
-  Agents: Record<string, string>;
+  Models: string[];
+  ActiveModel: string;
+}
+
+// desktop.ModelsFetchView 的 JSON 形态（internal/desktop/model_fetch.go）：
+// Models 为双端合并去重升序；Errors 为失败端点的稳定 wire key。
+export interface ModelsFetchView {
+  Models: string[];
+  Errors: string[];
 }
 
 export interface ModelPreset {
@@ -566,6 +575,7 @@ interface AppBindings {
   GetModelConfig(): Promise<ModelConfigView>;
   SetModelConfig(input: ModelConfigInput): Promise<void>;
   ListModelPresets(): Promise<ModelPreset[]>;
+  FetchAvailableModels(): Promise<ModelsFetchView>;
   GetSessionMode(): Promise<string>;
   SetSessionMode(mode: string): Promise<void>;
   GetPermissionMode(): Promise<string>;
@@ -1530,12 +1540,13 @@ export async function setCloseBehavior(mode: string): Promise<void> {
 export async function getModelConfig(): Promise<ModelConfigView> {
   const a = app();
   if (!a) {
-    return {
+  return {
       Enabled: false,
       Preset: '',
       OpenAIBaseURL: '',
       AnthropicBaseURL: '',
-      Agents: {},
+      Models: [],
+      ActiveModel: '',
       APIKeySet: false,
     };
   }
@@ -1553,6 +1564,12 @@ export async function listModelPresets(): Promise<ModelPreset[]> {
   const a = app();
   if (!a) return [];
   return a.ListModelPresets();
+}
+
+export async function fetchAvailableModels(): Promise<ModelsFetchView> {
+  const a = app();
+  if (!a) throw new Error(ERR_NO_BINDING);
+  return a.FetchAvailableModels();
 }
 
 export async function getSessionMode(): Promise<string> {

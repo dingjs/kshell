@@ -14,6 +14,7 @@ import {
   getTools,
   installBuiltinTool,
   listModelPresets,
+  fetchAvailableModels,
   formatProvidersYAML,
   loadProvidersYAML,
   parseProvidersYAML,
@@ -52,15 +53,6 @@ import { Dialog } from '../components/ui/dialog';
 import { ProvidersEditor } from '../components/ProvidersEditor';
 import { SkillPlaza } from '../components/SkillPlaza';
 import { normalizeSpec, withoutBuiltinSpecs, type CustomProviderSpec } from '../lib/providersForm';
-
-const MODEL_AGENTS = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex CLI' },
-  { id: 'gemini', label: 'Gemini CLI' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'cursor', label: 'Cursor' },
-  { id: 'codebuddy', label: 'CodeBuddy' },
-];
 
 // 语言行内置三选项；system（跟随系统）不是语言码，不在 getLanguageOptions 里
 const BUILTIN_LANGUAGE_CODES = ['en', 'zh-CN', 'system'];
@@ -105,7 +97,12 @@ export default function Settings() {
   const [modelApiKey, setModelApiKey] = useState('');
   const [modelApiKeySet, setModelApiKeySet] = useState(false);
   const [modelClearKey, setModelClearKey] = useState(false);
-  const [modelAgents, setModelAgents] = useState<Record<string, string>>({});
+  const [modelModels, setModelModels] = useState<string[]>([]);
+  const [modelActive, setModelActive] = useState('');
+  const [modelNewModel, setModelNewModel] = useState('');
+  const [modelFetched, setModelFetched] = useState<string[] | null>(null);
+  const [modelFetchErrors, setModelFetchErrors] = useState<string[]>([]);
+  const [modelFetching, setModelFetching] = useState(false);
   const [modelDirtyHint, setModelDirtyHint] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [recipes, setRecipes] = useState<Record<string, InstallRecipeView>>({});
@@ -227,7 +224,8 @@ export default function Settings() {
         setModelOpenAIURL(v.OpenAIBaseURL);
         setModelAnthropicURL(v.AnthropicBaseURL);
         setModelApiKeySet(v.APIKeySet);
-        setModelAgents(v.Agents ?? {});
+        setModelModels(v.Models ?? []);
+        setModelActive(v.ActiveModel ?? '');
       })
       .catch(() => {});
     return () => {
@@ -388,13 +386,12 @@ export default function Settings() {
     if (!p) return;
     setModelOpenAIURL(p.OpenAIBaseURL);
     setModelAnthropicURL(p.AnthropicBaseURL);
-    setModelAgents((prev) => {
-      const next = { ...prev };
-      for (const a of MODEL_AGENTS) {
-        if (forceModels || !next[a.id]) next[a.id] = p.RecommendedModel;
-      }
-      return next;
-    });
+    // 推荐模型：强制（按钮）时总是加入列表并设为当前；切换预设时仅在列表为空时兜底。
+    if (p.RecommendedModel && (forceModels || (!modelModels.length && !modelActive))) {
+      setModelModels((prev) => (prev.includes(p.RecommendedModel) ? prev : [...prev, p.RecommendedModel]));
+      setModelActive(p.RecommendedModel);
+      setModelDirtyHint(true);
+    }
   };
 
   const handleSave = async () => {
@@ -445,7 +442,8 @@ export default function Settings() {
         AnthropicBaseURL: modelAnthropicURL.trim(),
         APIKey: modelApiKey,
         ClearAPIKey: modelClearKey,
-        Agents: modelAgents,
+        Models: modelModels,
+        ActiveModel: modelActive.trim(),
       });
       if (modelApiKey) setModelApiKeySet(true);
       if (modelClearKey) setModelApiKeySet(false);
@@ -457,6 +455,33 @@ export default function Settings() {
       notify(backendError(e), 'error');
     } finally {
       setModelSaving(false);
+    }
+  };
+
+  // addToModelList：TrimSpace、去空、去重后追加进统一模型列表。
+  const addToModelList = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return;
+    setModelModels((prev) => (prev.includes(v) ? prev : [...prev, v]));
+  };
+
+  const handleAddModel = () => {
+    addToModelList(modelNewModel);
+    setModelNewModel('');
+  };
+
+  const handleFetchModels = async () => {
+    if (modelFetching) return;
+    setModelFetching(true);
+    try {
+      const v = await fetchAvailableModels();
+      setModelFetched(v.Models);
+      setModelFetchErrors(v.Errors);
+    } catch (e: unknown) {
+      setModelFetched([]);
+      setModelFetchErrors([backendError(e)]);
+    } finally {
+      setModelFetching(false);
     }
   };
 
@@ -857,23 +882,98 @@ export default function Settings() {
                   />
                   {t('ui.settings.model.clear_key')}
                 </label>
-                {MODEL_AGENTS.map((a) => (
-                  <div key={a.id} className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor={`model-${a.id}`}>
-                      {t('ui.settings.model.agent_model', { 0: a.label })}
-                    </label>
-                    <input
-                      id={`model-${a.id}`}
-                      aria-label={t('ui.settings.model.agent_model', { 0: a.label })}
-                      className={inputClass}
-                      value={modelAgents[a.id] ?? ''}
-                      onChange={(e) => {
-                        setModelAgents((prev) => ({ ...prev, [a.id]: e.target.value }));
-                        setModelDirtyHint(true);
-                      }}
-                    />
-                  </div>
-                ))}
+                <label className="text-xs text-muted-foreground" htmlFor="model-active">
+                  {t('ui.settings.model.active_model')}
+                </label>
+                <input
+                  id="model-active"
+                  aria-label={t('ui.settings.model.active_model')}
+                  className={inputClass}
+                  list="model-list-options"
+                  value={modelActive}
+                  onChange={(e) => {
+                    setModelActive(e.target.value);
+                    setModelDirtyHint(true);
+                  }}
+                />
+                <datalist id="model-list-options">
+                  {modelModels.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-muted-foreground">{t('ui.settings.model.models')}</p>
+                {modelModels.length === 0 && (
+                  <p className="text-xs text-muted-foreground">{t('ui.settings.model.models_empty')}</p>
+                )}
+                <ul className="grid gap-1">
+                  {modelModels.map((m) => (
+                    <li key={m} className="flex items-center gap-2 text-sm">
+                      <span className="flex-1 truncate" title={m}>{m}</span>
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        disabled={modelActive === m}
+                        onClick={() => {
+                          setModelActive(m);
+                          setModelDirtyHint(true);
+                        }}
+                      >
+                        {t('ui.settings.model.set_active')}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        onClick={() => {
+                          setModelModels((prev) => prev.filter((x) => x !== m));
+                          setModelDirtyHint(true);
+                        }}
+                      >
+                        {t('ui.settings.model.remove')}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex gap-2">
+                  <input
+                    aria-label={t('ui.settings.model.add_model')}
+                    placeholder={t('ui.settings.model.add_model')}
+                    className={inputClass}
+                    value={modelNewModel}
+                    onChange={(e) => setModelNewModel(e.target.value)}
+                  />
+                  <Button type="button" onClick={handleAddModel}>
+                    {t('ui.settings.model.add')}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="secondary" disabled={modelFetching} onClick={() => void handleFetchModels()}>
+                    {modelFetching ? t('ui.settings.model.fetching') : t('ui.settings.model.fetch_models')}
+                  </Button>
+                </div>
+                {modelFetchErrors.length > 0 && (
+                  <ul className="text-xs text-warning">
+                    {modelFetchErrors.map((k) => (
+                      <li key={k}>{translateBackend(k)}</li>
+                    ))}
+                  </ul>
+                )}
+                {modelFetched !== null && (
+                  <ul className="grid gap-1">
+                    {modelFetched.length === 0 && modelFetchErrors.length === 0 && (
+                      <li className="text-xs text-muted-foreground">{t('ui.settings.model.fetch_empty')}</li>
+                    )}
+                    {modelFetched.map((m) => (
+                      <li key={m} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 truncate" title={m}>{m}</span>
+                        {!modelModels.includes(m) && (
+                          <Button variant="secondary" type="button" onClick={() => addToModelList(m)}>
+                            {t('ui.settings.model.add')}
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => void handleSaveModel()} disabled={modelSaving}>
                     {t('ui.settings.model.save')}
