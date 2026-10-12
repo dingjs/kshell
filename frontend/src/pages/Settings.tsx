@@ -949,6 +949,7 @@ export default function Settings() {
                   <Button type="button" variant="secondary" disabled={modelFetching} onClick={() => void handleFetchModels()}>
                     {modelFetching ? t('ui.settings.model.fetching') : t('ui.settings.model.fetch_models')}
                   </Button>
+                  <span className="text-xs text-muted-foreground">{t('ui.settings.model.fetch_hint')}</span>
                 </div>
                 {modelFetchErrors.length > 0 && (
                   <ul className="text-xs text-warning">

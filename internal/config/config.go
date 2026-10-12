@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -257,16 +258,20 @@ func (c Config) normalized() Config {
 		}
 	}
 	c.Model.BaseURL = ""
-	// 旧 agents 值去重迁移进 Models（仅当 Models 尚未配置）。
+	// 旧 agents 值去重迁移进 Models（仅当 Models 尚未配置）；
+	// map 遍历无序，先排序保证迁移结果与 ActiveModel 取值确定。
 	if len(c.Model.Models) == 0 {
-		seen := map[string]bool{}
+		vals := make([]string, 0, len(c.Model.Agents))
 		for _, v := range c.Model.Agents {
-			v = strings.TrimSpace(v)
-			if v == "" || seen[v] {
-				continue
+			if v = strings.TrimSpace(v); v != "" {
+				vals = append(vals, v)
 			}
-			seen[v] = true
-			c.Model.Models = append(c.Model.Models, v)
+		}
+		sort.Strings(vals)
+		for _, v := range vals {
+			if len(c.Model.Models) == 0 || c.Model.Models[len(c.Model.Models)-1] != v {
+				c.Model.Models = append(c.Model.Models, v)
+			}
 		}
 		if len(c.Model.Models) > 0 && c.Model.ActiveModel == "" {
 			c.Model.ActiveModel = c.Model.Models[0]

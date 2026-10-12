@@ -332,6 +332,7 @@
         "add_model": "Model ID",
         "add": "Add",
         "fetch_models": "Fetch models",
+        "fetch_hint": "Fetches from saved endpoints; save URL changes first",
         "fetching": "Fetching...",
         "fetch_empty": "The endpoints returned no models",
         "set_active": "Set active",
