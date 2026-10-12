@@ -731,12 +731,13 @@ export default function WorkspaceTabView({ tab, visible }: { tab: WorkspaceTab; 
         label={tr('ui.workspace.resize_files')}
       />
 
+      {/* 滚动隔离：右栏整体不滚动（overflow-hidden），页签条固定，各面板内部滚动 */}
       <aside
-        className="flex shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-2.5"
+        className="flex shrink-0 flex-col overflow-hidden border-l border-border bg-card p-2.5"
         style={{ width: layout.right }}
         aria-label={tr('ui.workspace.right_panel_aria')}
       >
-        <div className="mb-2 flex gap-0.5 border-b border-border">
+        <div className="mb-2 flex shrink-0 gap-0.5 border-b border-border">
           <button
             className={cn(paneTabBase, rightPane === 'files' && paneTabActive)}
             aria-pressed={rightPane === 'files'}
@@ -773,7 +774,7 @@ export default function WorkspaceTabView({ tab, visible }: { tab: WorkspaceTab; 
         <div className={cn('min-h-0 flex-1 overflow-y-auto', rightPane !== 'git' && 'hidden')}>
           <GitPanel wsPath={tab.id} visible={visible && rightPane === 'git'} onOpenDiff={openGitDiff} />
         </div>
-        <div className={cn('min-h-0 flex-1', rightPane !== 'ssh' && 'hidden')}>
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', rightPane !== 'ssh' && 'hidden')}>
           <SshPanel wsPath={tab.id} onOpenRemote={handleOpenRemote} />
         </div>
         <div className={cn('min-h-0 flex-1 overflow-y-auto', rightPane !== 'terminal' && 'hidden')}>
