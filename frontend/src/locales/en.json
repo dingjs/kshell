@@ -65,7 +65,9 @@
       "root_not_deletable": "The workspace root cannot be deleted",
       "dir_not_previewable": "Cannot preview a directory",
       "dir_not_openable": "Cannot open a directory with the default app",
-      "too_big_preview": "File size {{0}} bytes exceeds preview limit {{1}} bytes"
+      "too_big_preview": "File size {{0}} bytes exceeds preview limit {{1}} bytes",
+      "no_git_repo": "Not inside a git repository",
+      "gitignore_write_failed": "Failed to write .gitignore: {{0}}"
     },
     "workspace": {
       "file_too_big": "File exceeds the {{0}}-byte edit limit",

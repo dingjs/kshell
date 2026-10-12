@@ -65,7 +65,9 @@
       "root_not_deletable": "工作区根目录不可删除",
       "dir_not_previewable": "不能预览目录",
       "dir_not_openable": "不能用默认应用打开目录",
-      "too_big_preview": "文件大小 {{0}} 字节超过预览上限 {{1}} 字节"
+      "too_big_preview": "文件大小 {{0}} 字节超过预览上限 {{1}} 字节",
+      "no_git_repo": "不在 git 仓库内",
+      "gitignore_write_failed": "写 .gitignore 失败：{{0}}"
     },
     "workspace": {
       "file_too_big": "文件超过 {{0}} 字节，不支持编辑",
