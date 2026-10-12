@@ -172,6 +172,8 @@ func newWindowManagerWithEmit(a *App, l TerminalLauncher) *WindowManager {
 
 // Startup 由 Wails 在窗口启动后调用：装配真实依赖、启动托盘并触发后台扫描。
 func (a *App) Startup(ctx context.Context) {
+	// 黑匣子最先就位：windowsgui 无控制台，之后所有 log.Printf 才有归宿
+	setupDesktopLog()
 	a.mu.Lock()
 	a.ctx = ctx
 	if a.opts.Emit == nil && ctx != nil {
@@ -404,6 +406,8 @@ func (a *App) StartTray() {
 		},
 		func() { a.quitApp(ctx) },
 	)
+	// 黑匣子：监视托盘消息循环，死亡瞬间 dump goroutine 栈（tray_watchdog_windows.go）
+	startTrayWatchdog()
 }
 
 // runTrayFn 是 runTray 的包级变量抽象：测试注入用，避免单测真启动托盘消息循环。

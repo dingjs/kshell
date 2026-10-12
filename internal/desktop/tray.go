@@ -76,8 +76,12 @@ func runTray(icon []byte, onShow, onQuit func()) {
 		// 在托盘 wndProc 线程同步执行属库设计使然，TrackPopupMenu 自带模态循环；
 		// macOS 注册后行为与默认 show_menu 等价，Linux dbus 菜单原生弹出不受影响。
 		systray.SetOnRClick(func(m systray.IMenu) {
-			// 弹出失败记日志便于诊断残余场景；库默认路径同样忽略该错误
-			if err := ensureForegroundThen(m.ShowMenu); err != nil {
+			// 弹出失败记日志（落盘 ~/.kshell/logs/desktop.log，见 logfile.go）便于诊断残余场景；
+			// 库默认路径同样忽略该错误。用户点空白取消菜单返回的 ERROR_SUCCESS 不算失败。
+			err := ensureForegroundThen(m.ShowMenu)
+			// KB135788：TrackPopupMenu 返回后补发 WM_NULL，防止菜单态残留吞掉下一次右键
+			postTrayWMNull()
+			if err != nil && !showMenuErrBenign(err) {
 				log.Printf("systray: 托盘右键弹出菜单失败: %v", err)
 			}
 		})
