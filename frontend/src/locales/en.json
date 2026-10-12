@@ -521,7 +521,7 @@
       "delete_confirm_multi_body": "The following {{n}} items will be deleted permanently:",
       "delete_confirm_more": "…{{n}} items in total",
       "deleted_multi": "Deleted {{n}} items",
-      "delete_partial_failed": "Deleted with {{n}} failures",
+      "delete_partial_failed": "Deleted {{ok}} items, {{n}} failed: {{err}}",
       "menu_ignore": "Add to git ignore",
       "ignored": "Added to git ignore: {{name}}",
       "ignore_failed": "Failed to add to git ignore"

@@ -513,30 +513,61 @@ describe('FileTree Delete 键删除', () => {
     mocks.deleteEntry.mockResolvedValue(undefined);
     render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
 
-    fireEvent.click(await screen.findByText('src')); // 锚点
+    fireEvent.click(await screen.findByText('src')); // 展开目录
     await screen.findByText('main.ts');
-    fireEvent.click(screen.getByText('main.ts'), { shiftKey: true }); // 选中 src, lib, main.ts
+    fireEvent.click(screen.getByText('main.ts')); // 锚点（文件，不触发展开）
+    fireEvent.click(screen.getByText('README.md'), { shiftKey: true }); // 选中 main.ts, README.md（互不嵌套）
 
     fireEvent.keyDown(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }), { key: 'Delete' });
     expect(
-      await screen.findByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '3')),
+      await screen.findByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '2')),
     ).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: tt('ui.files.delete') }));
     });
-    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'src');
-    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'src/lib');
     expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'src/main.ts');
-    expect(
-      useAppStore.getState().toasts.some(
-        (t) => t.tone === 'success' && t.title === tt('ui.files.deleted_multi').replace('{{n}}', '3'),
-      ),
-    ).toBe(true);
-    expect(screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '3'))).not.toBeInTheDocument();
+    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'README.md');
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some(
+          (t) => t.tone === 'success' && t.title === tt('ui.files.deleted_multi').replace('{{n}}', '2'),
+        ),
+      ).toBe(true);
+    });
+    expect(screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '2'))).not.toBeInTheDocument();
   });
 
-  it('删除部分失败时 toast 汇总失败数', async () => {
+  it('同时选中父目录与其子项时去重：确认后只删一次父目录，无失败 toast', async () => {
+    mocks.listFiles.mockResolvedValueOnce(root).mockResolvedValueOnce(srcChildren);
+    mocks.deleteEntry.mockResolvedValue(undefined);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('src')); // 锚点：src（目录，同时展开）
+    await screen.findByText('main.ts');
+    fireEvent.click(screen.getByText('main.ts'), { shiftKey: true }); // 选中 src, lib, main.ts
+
+    fireEvent.keyDown(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }), { key: 'Delete' });
+    // lib 与 main.ts 会被删除 src 连带走掉：弹窗去重后只剩 src 一项，走单条确认
+    expect(await screen.findByText(tt('ui.files.delete_confirm_title'))).toBeInTheDocument();
+    expect(screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '3'))).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.files.delete') }));
+    });
+    expect(mocks.deleteEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'src');
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some(
+          (t) => t.tone === 'success' && t.title === tt('ui.files.deleted').replace('{{name}}', 'src'),
+        ),
+      ).toBe(true);
+      expect(useAppStore.getState().toasts.some((t) => t.tone === 'error')).toBe(false);
+    });
+  });
+
+  it('删除部分失败时 toast 汇总成功/失败数与首条错误文本', async () => {
     mocks.listFiles.mockResolvedValue(root);
     mocks.deleteEntry
       .mockRejectedValueOnce(new Error('err.files.delete_failed'))
@@ -551,11 +582,16 @@ describe('FileTree Delete 键删除', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: tt('ui.files.delete') }));
     });
-    expect(
-      useAppStore.getState().toasts.some(
-        (t) => t.tone === 'error' && t.title === tt('ui.files.delete_partial_failed').replace('{{n}}', '1'),
-      ),
-    ).toBe(true);
+    // err.files.delete_failed 未注册 wire key：backendError 原样返回，可直接断言
+    const expected = tt('ui.files.delete_partial_failed')
+      .replace('{{ok}}', '1')
+      .replace('{{n}}', '1')
+      .replace('{{err}}', 'err.files.delete_failed');
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some((t) => t.tone === 'error' && t.title === expected),
+      ).toBe(true);
+    });
   });
 
   it('焦点在搜索框时 Delete 不触发删除', async () => {

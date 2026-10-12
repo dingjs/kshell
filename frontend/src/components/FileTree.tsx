@@ -791,14 +791,22 @@ export default function FileTree({
   };
 
   // Delete 键删除选中集：焦点在输入控件（搜索/重命名/新建行内输入）时不拦截；
-  // 确认弹窗需要行对象，这里按树遍历顺序把选中 relPath 解析回 TreeItem
+  // 确认弹窗需要行对象，这里按树遍历顺序把选中 relPath 解析回 TreeItem。
+  // 树遍历保证祖先先于后代出现：已选目录的子孙会被连带删除，直接剔除，
+  // 避免先删父目录后子条目删除失败误报（弹窗与删除目标共用这份去重结果）
   const startDeleteSelected = () => {
     const cur = itemsRef.current;
     if (!cur || selected.size === 0) return;
     const found: TreeItem[] = [];
+    const kept: string[] = [];
     const walk = (list: TreeItem[]) => {
       for (const it of list) {
-        if (it.relPath !== '' && selected.has(it.relPath)) found.push(it);
+        if (it.relPath !== '' && selected.has(it.relPath)) {
+          if (!kept.some((p) => it.relPath.startsWith(`${p}/`))) {
+            found.push(it);
+            kept.push(it.relPath);
+          }
+        }
         if (it.children) walk(it.children);
       }
     };
@@ -883,7 +891,7 @@ export default function FileTree({
   };
 
   // 删除确认后的执行：逐条 deleteEntry（部分失败继续其余条目，os.RemoveAll 永久删除），
-  // 结束统一 toast 汇总（全成功一条成功消息；有失败一条含失败数的错误消息）；
+  // 结束统一 toast 汇总（全成功一条成功消息；有失败报成功数/失败数与首条错误文本）；
   // 删除过程中清空选中集，完成后刷新树镜像 + git 状态
   const handleDeleteConfirm = () => {
     if (!deleting || deleting.length === 0) return;
@@ -893,10 +901,13 @@ export default function FileTree({
     clearSelection();
     void (async () => {
       let failed = 0;
+      let firstErr = '';
       for (const it of targets) {
         try {
           await deleteEntry(wsPath, it.relPath);
-        } catch {
+        } catch (e) {
+          // 只留首条错误：汇总 toast 空间有限，其余失败可重删复现
+          if (failed === 0) firstErr = backendError(e);
           failed += 1;
         }
       }
@@ -910,7 +921,16 @@ export default function FileTree({
             'success',
           );
       } else {
-        useAppStore.getState().notify(t('ui.files.delete_partial_failed', { n: failed }), 'error');
+        useAppStore
+          .getState()
+          .notify(
+            t('ui.files.delete_partial_failed', {
+              ok: targets.length - failed,
+              n: failed,
+              err: firstErr,
+            }),
+            'error',
+          );
       }
       refreshRoot();
       void refreshGitStatus(wsPath);
