@@ -65,7 +65,8 @@ func TestModelDualURLRoundTrip(t *testing.T) {
 	cfg.Model.Preset = "deepseek"
 	cfg.Model.OpenAIBaseURL = "https://api.deepseek.com"
 	cfg.Model.AnthropicBaseURL = "https://api.deepseek.com/anthropic"
-	cfg.Model.Agents["claude"] = "deepseek-chat"
+	cfg.Model.Models = []string{"deepseek-chat"}
+	cfg.Model.ActiveModel = "deepseek-chat"
 	if err := Save(p, cfg); err != nil {
 		t.Fatal(err)
 	}

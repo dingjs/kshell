@@ -79,16 +79,18 @@ const (
 	PermissionModeBypass  = "bypass"
 )
 
-// ModelConfig 是全局模型/端点配置 + 每 agent 模型名。
-// BaseURL 为旧字段：仅读取迁移用，保存时 omitempty 且迁移后清空。
+// ModelConfig 是全局模型/端点配置 + 统一模型列表。
+// BaseURL/Agents 为旧字段：仅读取迁移用，保存时 omitempty 且迁移后清空。
 type ModelConfig struct {
-	Enabled          bool              `yaml:"enabled"`
-	Preset           string            `yaml:"preset"`
-	OpenAIBaseURL    string            `yaml:"openai_base_url"`
-	AnthropicBaseURL string            `yaml:"anthropic_base_url"`
-	BaseURL          string            `yaml:"base_url,omitempty"` // legacy
-	APIKey           string            `yaml:"api_key"`
-	Agents           map[string]string `yaml:"agents"` // toolID -> 模型名（空=不改）
+	Enabled          bool     `yaml:"enabled"`
+	Preset           string   `yaml:"preset"`
+	OpenAIBaseURL    string   `yaml:"openai_base_url"`
+	AnthropicBaseURL string   `yaml:"anthropic_base_url"`
+	BaseURL          string   `yaml:"base_url,omitempty"` // legacy
+	APIKey           string   `yaml:"api_key"`
+	Models           []string `yaml:"models"`       // 统一模型 ID 列表（去空、去重）
+	ActiveModel      string   `yaml:"active_model"` // 当前选中项；空=不注入模型名
+	Agents           map[string]string `yaml:"agents,omitempty"` // legacy
 }
 
 type Config struct {
@@ -132,7 +134,7 @@ func Default() Config {
 		CloseBehavior:  CloseBehaviorTray,
 		SessionMode:    SessionModeTUI,
 		PermissionMode: PermissionModeDefault,
-		Model:          ModelConfig{Agents: map[string]string{}},
+		Model:          ModelConfig{Models: []string{}},
 	}
 }
 
@@ -241,13 +243,7 @@ func (c Config) normalized() Config {
 	default:
 		c.PermissionMode = d.PermissionMode
 	}
-	// 模型配置：Agents 补空 map；旧 base_url 迁移到双协议字段后清空。
-	if c.Model.Agents == nil {
-		c.Model.Agents = map[string]string{}
-	}
-	for k, v := range c.Model.Agents {
-		c.Model.Agents[k] = strings.TrimSpace(v)
-	}
+	// 模型配置：统一模型列表归一；旧 base_url / agents 迁移后清空。
 	c.Model.Preset = strings.TrimSpace(c.Model.Preset)
 	c.Model.OpenAIBaseURL = sanitizeHTTPURL(c.Model.OpenAIBaseURL)
 	c.Model.AnthropicBaseURL = sanitizeHTTPURL(c.Model.AnthropicBaseURL)
@@ -261,7 +257,40 @@ func (c Config) normalized() Config {
 		}
 	}
 	c.Model.BaseURL = ""
+	// 旧 agents 值去重迁移进 Models（仅当 Models 尚未配置）。
+	if len(c.Model.Models) == 0 {
+		seen := map[string]bool{}
+		for _, v := range c.Model.Agents {
+			v = strings.TrimSpace(v)
+			if v == "" || seen[v] {
+				continue
+			}
+			seen[v] = true
+			c.Model.Models = append(c.Model.Models, v)
+		}
+		if len(c.Model.Models) > 0 && c.Model.ActiveModel == "" {
+			c.Model.ActiveModel = c.Model.Models[0]
+		}
+	}
+	c.Model.Agents = nil
+	c.Model.Models = normalizeModels(c.Model.Models)
+	c.Model.ActiveModel = strings.TrimSpace(c.Model.ActiveModel)
 	return c
+}
+
+// normalizeModels 对模型 ID 列表 TrimSpace、去空串、去重并保持顺序；返回非 nil slice。
+func normalizeModels(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 func sanitizeHTTPURL(u string) string {

@@ -600,7 +600,7 @@ func (a *App) modelOptions() launch.ModelOptions {
 			OpenAIBaseURL:    m.OpenAIBaseURL,
 			AnthropicBaseURL: m.AnthropicBaseURL,
 			APIKey:           m.APIKey,
-			Model:            m.Agents[toolID],
+			Model:            m.ActiveModel,
 		}, true
 	}}
 }
