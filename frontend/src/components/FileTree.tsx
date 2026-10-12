@@ -991,62 +991,62 @@ export default function FileTree({
       {/* 滚动隔离：搜索框行固定，搜索结果 / 本地过滤 / 正常树三分支统一在内部滚动容器中。
           右键菜单与删除确认弹窗渲染在容器外，不受滚动影响 */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {showResults ? (
-        <>
-        <p className="mb-1 px-1 text-xs text-muted-foreground" aria-live="polite">
-          {searching ? t('ui.files.searching') : t('ui.files.search_count', { n: hits.length })}
-        </p>
-        <ul role="listbox" aria-label={t('ui.files.search_results_aria')} className="m-0 list-none p-0 font-mono text-xs">
-          {hits.length === 0 ? (
-            <EmptyState title={t('ui.files.search_empty', { q })} />
-          ) : (
-            hits.map((h) => (
-              <li key={h.Path}>
-                <button
-                  className="flex w-full items-baseline gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-muted"
-                  onClick={() => (h.IsDir ? void openDirFromSearch(h.RelPath) : onOpenFile(h.Path))}
-                  onDoubleClick={(e) => {
-                    if (h.IsDir) return;
-                    e.preventDefault();
-                    editFile(h.Path);
-                  }}
-                  title={h.Path}
-                >
-                  <span className="shrink-0 truncate text-foreground/90">{h.Name}</span>
-                  {dirOf(h.RelPath) && (
-                    <span className="min-w-0 truncate text-xs text-muted-foreground">
-                      {dirOf(h.RelPath)}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-        </>
-      ) : q.length > 0 ? (
-        // 防抖等待期：先用本地已加载节点即时过滤，结果到达后切平铺列表
-        (() => {
-          const filtered = filterItems(items, q.toLowerCase());
-          return (
-            <ul role="tree" aria-label={t('ui.files.tree_filtering_aria')} className="m-0 list-none p-0 text-sm">
-              {filtered.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">
-                  {t('ui.files.filter_no_match')}
-                </p>
+        {showResults ? (
+          <>
+            <p className="mb-1 px-1 text-xs text-muted-foreground" aria-live="polite">
+              {searching ? t('ui.files.searching') : t('ui.files.search_count', { n: hits.length })}
+            </p>
+            <ul role="listbox" aria-label={t('ui.files.search_results_aria')} className="m-0 list-none p-0 font-mono text-xs">
+              {hits.length === 0 ? (
+                <EmptyState title={t('ui.files.search_empty', { q })} />
               ) : (
-                filtered.map((it) => (
-                  <TreeRow key={it.node.Path} item={it} depth={0} {...rowProps} />
+                hits.map((h) => (
+                  <li key={h.Path}>
+                    <button
+                      className="flex w-full items-baseline gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-muted"
+                      onClick={() => (h.IsDir ? void openDirFromSearch(h.RelPath) : onOpenFile(h.Path))}
+                      onDoubleClick={(e) => {
+                        if (h.IsDir) return;
+                        e.preventDefault();
+                        editFile(h.Path);
+                      }}
+                      title={h.Path}
+                    >
+                      <span className="shrink-0 truncate text-foreground/90">{h.Name}</span>
+                      {dirOf(h.RelPath) && (
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">
+                          {dirOf(h.RelPath)}
+                        </span>
+                      )}
+                    </button>
+                  </li>
                 ))
               )}
             </ul>
-          );
-        })()
-      ) : (
-        <ul role="tree" aria-label={t('ui.files.tree_aria')} className="m-0 list-none p-0 text-sm">
-          {items.map((it) => <TreeRow key={it.node.Path} item={it} depth={0} {...rowProps} />)}
-        </ul>
-      )}
+          </>
+        ) : q.length > 0 ? (
+          // 防抖等待期：先用本地已加载节点即时过滤，结果到达后切平铺列表
+          (() => {
+            const filtered = filterItems(items, q.toLowerCase());
+            return (
+              <ul role="tree" aria-label={t('ui.files.tree_filtering_aria')} className="m-0 list-none p-0 text-sm">
+                {filtered.length === 0 ? (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    {t('ui.files.filter_no_match')}
+                  </p>
+                ) : (
+                  filtered.map((it) => (
+                    <TreeRow key={it.node.Path} item={it} depth={0} {...rowProps} />
+                  ))
+                )}
+              </ul>
+            );
+          })()
+        ) : (
+          <ul role="tree" aria-label={t('ui.files.tree_aria')} className="m-0 list-none p-0 text-sm">
+            {items.map((it) => <TreeRow key={it.node.Path} item={it} depth={0} {...rowProps} />)}
+          </ul>
+        )}
       </div>
 
       {menu && (
