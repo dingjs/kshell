@@ -477,6 +477,7 @@ interface AppBindings {
   RenameEntry(wsPath: string, relPath: string, newName: string): Promise<string>;
   CreateEntry(wsPath: string, dirRelPath: string, name: string, isDir: boolean): Promise<string>;
   DeleteEntry(wsPath: string, relPath: string): Promise<void>;
+  AddGitIgnore(wsPath: string, relPath: string): Promise<void>;
   MoveEntry(wsPath: string, srcRelPath: string, dstDirRelPath: string): Promise<string>;
   ReadFileForEdit(wsPath: string, path: string): Promise<EditContent>;
   SaveFile(wsPath: string, path: string, text: string, eol: string): Promise<void>;
@@ -780,6 +781,14 @@ export async function deleteEntry(wsPath: string, relPath: string): Promise<void
   const a = app();
   if (!a) throw new Error(ERR_NO_BINDING);
   return a.DeleteEntry(wsPath, relPath);
+}
+
+// addGitIgnore 把工作区内条目追加进其所在 git 仓库根的 .gitignore（目录带尾部斜杠）。
+// Go 侧已完成去重与路径校验；错误（非 git 仓库、越界等）向上抛。
+export async function addGitIgnore(wsPath: string, relPath: string): Promise<void> {
+  const a = app();
+  if (!a) throw new Error(ERR_NO_BINDING);
+  await a.AddGitIgnore(wsPath, relPath);
 }
 
 // moveEntry 把 srcRelPath 移入 dstDirRelPath 目录（保留原名），返回新绝对路径。

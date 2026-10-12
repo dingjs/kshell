@@ -516,7 +516,15 @@
       "tree_aria": "Workspace file tree",
       "show_all": "All",
       "show_all_aria": "Show all",
-      "refresh": "Refresh file tree"
+      "refresh": "Refresh file tree",
+      "delete_confirm_multi_title": "Delete {{n}} items",
+      "delete_confirm_multi_body": "The following {{n}} items will be deleted permanently:",
+      "delete_confirm_more": "…{{n}} items in total",
+      "deleted_multi": "Deleted {{n}} items",
+      "delete_partial_failed": "Deleted with {{n}} failures",
+      "menu_ignore": "Add to git ignore",
+      "ignored": "Added to git ignore: {{name}}",
+      "ignore_failed": "Failed to add to git ignore"
     },
     "terminal": {
       "tabs_aria": "Terminal tabs",
