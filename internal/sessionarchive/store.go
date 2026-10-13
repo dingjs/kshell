@@ -57,6 +57,27 @@ func (s *Store) Add(id string) error {
 	return s.saveLocked()
 }
 
+// AddMany 批量归档，返回实际新增数。一次加锁一次落盘，避免 N 次写盘。
+func (s *Store) AddMany(ids []string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	added := 0
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := s.ids[id]; ok {
+			continue
+		}
+		s.ids[id] = struct{}{}
+		added++
+	}
+	if added == 0 {
+		return 0, nil
+	}
+	return added, s.saveLocked()
+}
+
 // Remove 把会话从归档名单去掉。
 func (s *Store) Remove(id string) error {
 	s.mu.Lock()
@@ -66,6 +87,24 @@ func (s *Store) Remove(id string) error {
 	}
 	delete(s.ids, id)
 	return s.saveLocked()
+}
+
+// RemoveMany 批量恢复，返回实际移除数。
+func (s *Store) RemoveMany(ids []string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed := 0
+	for _, id := range ids {
+		if _, ok := s.ids[id]; !ok {
+			continue
+		}
+		delete(s.ids, id)
+		removed++
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	return removed, s.saveLocked()
 }
 
 // Has 报告该会话是否已归档。

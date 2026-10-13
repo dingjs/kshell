@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,23 +12,22 @@ import (
 	"github.com/yangk/kshell/internal/applang"
 )
 
-const transcriptReadLimit = 512 * 1024
-
 var errTranscriptNoPath = errors.New("err.transcript.no_path")
 
 // FormatSessionMarkdown 把历史会话抽成只读 Markdown（用户/助手轮次）。
-// SQLite（OpenCode）无法按文件展开，返回说明文案；读取超过 transcriptReadLimit 时 truncated=true。
-func FormatSessionMarkdown(s Session) (string, bool, error) {
+// 全量读入会话文件，不做长度截断——预览必须能看到全部消息内容。
+// SQLite（OpenCode）无法按文件展开，返回说明文案。
+func FormatSessionMarkdown(s Session) (string, error) {
 	if s.ToolID == opencodeID || strings.EqualFold(filepath.Ext(s.Path), ".db") {
-		return sqliteSessionMarkdown(s), false, nil
+		return sqliteSessionMarkdown(s), nil
 	}
 	if strings.TrimSpace(s.Path) == "" {
-		return "", false, errTranscriptNoPath
+		return "", errTranscriptNoPath
 	}
 
-	raw, truncated, err := readLimited(s.Path, transcriptReadLimit)
+	raw, err := os.ReadFile(s.Path)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 
 	turns := turnsFromGeminiJSON(raw)
@@ -37,9 +35,9 @@ func FormatSessionMarkdown(s Session) (string, bool, error) {
 		turns = turnsFromJSONL(raw)
 	}
 	if len(turns) == 0 {
-		return fallbackEmptyMarkdown(s), truncated, nil
+		return fallbackEmptyMarkdown(s), nil
 	}
-	return renderTurns(s.Title, turns), truncated, nil
+	return renderTurns(s.Title, turns), nil
 }
 
 func sqliteSessionMarkdown(s Session) string {
@@ -56,23 +54,6 @@ func fallbackEmptyMarkdown(s Session) string {
 		title = s.ID
 	}
 	return fmt.Sprintf("# %s\n\n%s\n", title, applang.T("transcript.empty_body"))
-}
-
-func readLimited(path string, limit int) ([]byte, bool, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, false, err
-	}
-	defer f.Close()
-	buf, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil {
-		return nil, false, err
-	}
-	truncated := len(buf) > limit
-	if truncated {
-		buf = buf[:limit]
-	}
-	return buf, truncated, nil
 }
 
 type previewTurn struct {

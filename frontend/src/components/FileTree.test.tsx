@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   renameEntry: vi.fn(),
   createEntry: vi.fn(),
   deleteEntry: vi.fn(),
+  addGitIgnore: vi.fn(),
   moveEntry: vi.fn(),
   gitStatus: vi.fn(),
   refreshFiles: vi.fn().mockResolvedValue(undefined),
@@ -414,6 +415,264 @@ describe('FileTree', () => {
 
     expect(useAppStore.getState().toasts.some((t) => t.title.includes(tt('err.files.target_exists')))).toBe(true);
     expect(screen.getByText('README.md')).toBeInTheDocument();
+  });
+
+  it('重命名输入框内按 Delete 不触发删除确认', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.click(screen.getByText('README.md')); // 先选中
+    fireEvent.click(screen.getByRole('button', { name: renameAria('README.md') }));
+    const input = screen.getByRole('textbox', { name: renameAria('README.md') });
+    fireEvent.keyDown(input, { key: 'Delete' });
+    expect(screen.queryByText(tt('ui.files.delete_confirm_title'))).not.toBeInTheDocument();
+    expect(screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '1'))).not.toBeInTheDocument();
+  });
+});
+
+describe('FileTree 选中与多选', () => {
+  it('单击文件行进入选中态且保留预览回调', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    const onOpen = vi.fn();
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={onOpen} />);
+    const row = await screen.findByText('README.md');
+
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith('D:\\proj\\README.md');
+    expect(row.closest('li')).toHaveAttribute('aria-selected', 'true');
+    // 其他行不选中
+    expect(screen.getByText('src').closest('li')).not.toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('单击目录行展开子层同时进入选中态', async () => {
+    mocks.listFiles.mockResolvedValueOnce(root).mockResolvedValueOnce(srcChildren);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('src'));
+    expect(await screen.findByText('main.ts')).toBeInTheDocument();
+    expect(screen.getByText('src').closest('li')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('铅笔按钮不触发行选中', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.click(screen.getByRole('button', { name: renameAria('README.md') }));
+    const input = screen.getByRole('textbox', { name: renameAria('README.md') });
+    expect(input).toBeInTheDocument();
+    // 行进入编辑态后名字被 input 替换，用 input 所在行断言未选中
+    expect(input.closest('li')).not.toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('shift+点击以锚点为界跨层范围多选，锚点不随 shift 移动', async () => {
+    mocks.listFiles.mockResolvedValueOnce(root).mockResolvedValueOnce(srcChildren);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('src')); // 锚点：src
+    await screen.findByText('main.ts');
+    // 可见平铺顺序：src, lib, main.ts, README.md → 区间全选中
+    fireEvent.click(screen.getByText('main.ts'), { shiftKey: true });
+    for (const name of ['src', 'lib', 'main.ts', 'README.md'].slice(0, 3)) {
+      expect(screen.getByText(name).closest('li')).toHaveAttribute('aria-selected', 'true');
+    }
+    expect(screen.getByText('README.md').closest('li')).not.toHaveAttribute('aria-selected', 'true');
+
+    // 锚点仍是 src：shift+README.md 覆盖 src..README.md 全部 4 行
+    fireEvent.click(screen.getByText('README.md'), { shiftKey: true });
+    for (const name of ['src', 'lib', 'main.ts', 'README.md']) {
+      expect(screen.getByText(name).closest('li')).toHaveAttribute('aria-selected', 'true');
+    }
+  });
+
+  it('首次直接 shift+点击等价单选', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('README.md'), { shiftKey: true });
+    expect(screen.getByText('README.md').closest('li')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('src').closest('li')).not.toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('wsPath 变化时清空选中集', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    const { rerender } = render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    fireEvent.click(await screen.findByText('README.md'));
+    expect(screen.getByText('README.md').closest('li')).toHaveAttribute('aria-selected', 'true');
+
+    rerender(<FileTree wsPath={'D:\\proj2'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+    expect(screen.getByText('README.md').closest('li')).not.toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('FileTree Delete 键删除', () => {
+  it('Delete 键弹多选确认框，确认后逐条 deleteEntry 并汇总成功 toast', async () => {
+    mocks.listFiles.mockResolvedValueOnce(root).mockResolvedValueOnce(srcChildren);
+    mocks.deleteEntry.mockResolvedValue(undefined);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('src')); // 展开目录
+    await screen.findByText('main.ts');
+    fireEvent.click(screen.getByText('main.ts')); // 锚点（文件，不触发展开）
+    fireEvent.click(screen.getByText('README.md'), { shiftKey: true }); // 选中 main.ts, README.md（互不嵌套）
+
+    fireEvent.keyDown(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }), { key: 'Delete' });
+    expect(
+      await screen.findByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '2')),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.files.delete') }));
+    });
+    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'src/main.ts');
+    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'README.md');
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some(
+          (t) => t.tone === 'success' && t.title === tt('ui.files.deleted_multi').replace('{{n}}', '2'),
+        ),
+      ).toBe(true);
+    });
+    expect(screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '2'))).not.toBeInTheDocument();
+  });
+
+  it('同时选中父目录与其子项时去重：确认后只删一次父目录，无失败 toast', async () => {
+    mocks.listFiles.mockResolvedValueOnce(root).mockResolvedValueOnce(srcChildren);
+    mocks.deleteEntry.mockResolvedValue(undefined);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('src')); // 锚点：src（目录，同时展开）
+    await screen.findByText('main.ts');
+    fireEvent.click(screen.getByText('main.ts'), { shiftKey: true }); // 选中 src, lib, main.ts
+
+    fireEvent.keyDown(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }), { key: 'Delete' });
+    // lib 与 main.ts 会被删除 src 连带走掉：弹窗去重后只剩 src 一项，走单条确认
+    expect(await screen.findByText(tt('ui.files.delete_confirm_title'))).toBeInTheDocument();
+    expect(screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '3'))).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.files.delete') }));
+    });
+    expect(mocks.deleteEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteEntry).toHaveBeenCalledWith('D:\\proj', 'src');
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some(
+          (t) => t.tone === 'success' && t.title === tt('ui.files.deleted').replace('{{name}}', 'src'),
+        ),
+      ).toBe(true);
+      expect(useAppStore.getState().toasts.some((t) => t.tone === 'error')).toBe(false);
+    });
+  });
+
+  it('删除部分失败时 toast 汇总成功/失败数与首条错误文本', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    mocks.deleteEntry
+      .mockRejectedValueOnce(new Error('err.files.delete_failed'))
+      .mockResolvedValueOnce(undefined);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.click(await screen.findByText('src')); // 锚点
+    fireEvent.click(screen.getByText('README.md'), { shiftKey: true }); // 选中 src + README.md
+
+    fireEvent.keyDown(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }), { key: 'Delete' });
+    await screen.findByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '2'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: tt('ui.files.delete') }));
+    });
+    // err.files.delete_failed 未注册 wire key：backendError 原样返回，可直接断言
+    const expected = tt('ui.files.delete_partial_failed')
+      .replace('{{ok}}', '1')
+      .replace('{{n}}', '1')
+      .replace('{{err}}', 'err.files.delete_failed');
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some((t) => t.tone === 'error' && t.title === expected),
+      ).toBe(true);
+    });
+  });
+
+  it('焦点在搜索框时 Delete 不触发删除', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.click(screen.getByText('README.md')); // 选中一行
+    fireEvent.keyDown(screen.getByRole('textbox', { name: tt('ui.files.search_aria') }), { key: 'Delete' });
+    expect(screen.queryByText(tt('ui.files.delete_confirm_title'))).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(tt('ui.files.delete_confirm_multi_title').replace('{{n}}', '1')),
+    ).not.toBeInTheDocument();
+  });
+
+  it('无选中集时 Delete 不弹确认框', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.keyDown(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }), { key: 'Delete' });
+    expect(screen.queryByText(tt('ui.files.delete_confirm_title'))).not.toBeInTheDocument();
+  });
+});
+
+describe('FileTree 右键加入 git 忽略', () => {
+  it('文件行菜单含忽略项，执行后调 addGitIgnore 并成功 toast', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    mocks.addGitIgnore.mockResolvedValue(undefined);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.contextMenu(screen.getByText('README.md'));
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole('menuitem', { name: tt('ui.files.menu_ignore') }));
+    });
+    expect(mocks.addGitIgnore).toHaveBeenCalledWith('D:\\proj', 'README.md');
+    await waitFor(() => {
+      expect(useAppStore.getState().toasts.some((t) => t.tone === 'success')).toBe(true);
+    });
+  });
+
+  it('目录行菜单也含忽略项', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    mocks.addGitIgnore.mockResolvedValue(undefined);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+
+    fireEvent.contextMenu(await screen.findByText('src'));
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: tt('ui.files.menu_ignore') }));
+    await waitFor(() => {
+      expect(mocks.addGitIgnore).toHaveBeenCalledWith('D:\\proj', 'src');
+    });
+  });
+
+  it('忽略失败时 toast 含失败文案', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    mocks.addGitIgnore.mockRejectedValue(new Error('err.files.no_git_repo'));
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.contextMenu(screen.getByText('README.md'));
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole('menuitem', { name: tt('ui.files.menu_ignore') }));
+    });
+    await waitFor(() => {
+      expect(
+        useAppStore.getState().toasts.some((t) => t.tone === 'error' && t.title.includes(tt('ui.files.ignore_failed'))),
+      ).toBe(true);
+    });
+  });
+
+  it('虚拟根行与空白处菜单不含忽略项', async () => {
+    mocks.listFiles.mockResolvedValue(root);
+    render(<FileTree wsPath={'D:\\proj'} onOpenFile={() => {}} />);
+    await screen.findByText('README.md');
+
+    fireEvent.contextMenu(screen.getByText('proj'));
+    expect(screen.queryByRole('menuitem', { name: tt('ui.files.menu_ignore') })).not.toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    fireEvent.contextMenu(screen.getByRole('tree', { name: tt('ui.files.tree_aria') }));
+    expect(screen.queryByRole('menuitem', { name: tt('ui.files.menu_ignore') })).not.toBeInTheDocument();
   });
 });
 

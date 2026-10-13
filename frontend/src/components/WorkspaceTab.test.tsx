@@ -122,7 +122,7 @@ beforeEach(() => {
   mocks.onToolsUpdated.mockImplementation(() => () => {});
   mocks.onWindowClosed.mockReturnValue(() => {});
   mocks.getSessions.mockResolvedValue([]);
-  mocks.getSessionPreview.mockResolvedValue({ Markdown: '## 用户\n\nhi', Truncated: false });
+  mocks.getSessionPreview.mockResolvedValue({ Markdown: '## 用户\n\nhi' });
   mocks.listFiles.mockResolvedValue([]);
   mocks.readFileForEdit.mockResolvedValue({ Text: '', EOL: 'lf', Size: 0 });
   mocks.listConnections.mockResolvedValue([]);

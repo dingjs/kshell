@@ -172,6 +172,9 @@ func newWindowManagerWithEmit(a *App, l TerminalLauncher) *WindowManager {
 
 // Startup 由 Wails 在窗口启动后调用：装配真实依赖、启动托盘并触发后台扫描。
 func (a *App) Startup(ctx context.Context) {
+	// 黑匣子最先就位：windowsgui 无控制台，之后所有 log.Printf 才有归宿
+	setupDesktopLog()
+
 	// macOS GUI 启动的 PATH 不含 Homebrew 等用户 bin 目录，先补齐再扫描：否则 Detect
 	// 的 LookPath 会漏掉 Homebrew 装的 claude/codex 等 agent，误判「已损坏」。
 	augmentPath()
@@ -408,6 +411,8 @@ func (a *App) StartTray() {
 		},
 		func() { a.quitApp(ctx) },
 	)
+	// 黑匣子：监视托盘消息循环，死亡瞬间 dump goroutine 栈（tray_watchdog_windows.go）
+	startTrayWatchdog()
 }
 
 // runTrayFn 是 runTray 的包级变量抽象：测试注入用，避免单测真启动托盘消息循环。
@@ -604,7 +609,7 @@ func (a *App) modelOptions() launch.ModelOptions {
 			OpenAIBaseURL:    m.OpenAIBaseURL,
 			AnthropicBaseURL: m.AnthropicBaseURL,
 			APIKey:           m.APIKey,
-			Model:            m.Agents[toolID],
+			Model:            m.ActiveModel,
 		}, true
 	}}
 }
@@ -877,10 +882,9 @@ func (a *App) GetSessions() []providers.Session {
 	return a.result.Sessions
 }
 
-// SessionPreview 是历史会话的只读 Markdown 正文。
+// SessionPreview 是历史会话的只读 Markdown 正文（全量，不截断）。
 type SessionPreview struct {
-	Markdown  string
-	Truncated bool
+	Markdown string
 }
 
 // GetSessionPreview 按会话 ID 抽取对话 Markdown，供预览区只读展示。
@@ -889,11 +893,11 @@ func (a *App) GetSessionPreview(id string) (SessionPreview, error) {
 	if !ok {
 		return SessionPreview{}, errSessionNotFound
 	}
-	md, truncated, err := providers.FormatSessionMarkdown(s)
+	md, err := providers.FormatSessionMarkdown(s)
 	if err != nil {
 		return SessionPreview{}, err
 	}
-	return SessionPreview{Markdown: md, Truncated: truncated}, nil
+	return SessionPreview{Markdown: md}, nil
 }
 
 // ResumeSession 恢复指定会话：弹出新终端窗口并在其中启动 agent CLI。

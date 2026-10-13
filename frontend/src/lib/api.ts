@@ -51,10 +51,9 @@ export interface Session {
   Path: string;
 }
 
-/** GetSessionPreview 返回的只读对话 Markdown */
+/** GetSessionPreview 返回的只读对话 Markdown（全量，不截断） */
 export interface SessionPreview {
   Markdown: string;
-  Truncated: boolean;
 }
 
 // "scan:done" 事件 payload（internal/desktop/app.go runScan）；
@@ -358,7 +357,8 @@ export interface ModelConfigView {
   Preset: string;
   OpenAIBaseURL: string;
   AnthropicBaseURL: string;
-  Agents: Record<string, string>;
+  Models: string[];
+  ActiveModel: string;
   APIKeySet: boolean;
 }
 
@@ -370,7 +370,15 @@ export interface ModelConfigInput {
   AnthropicBaseURL: string;
   APIKey: string;
   ClearAPIKey: boolean;
-  Agents: Record<string, string>;
+  Models: string[];
+  ActiveModel: string;
+}
+
+// desktop.ModelsFetchView 的 JSON 形态（internal/desktop/model_fetch.go）：
+// Models 为双端合并去重升序；Errors 为失败端点的稳定 wire key。
+export interface ModelsFetchView {
+  Models: string[];
+  Errors: string[];
 }
 
 export interface ModelPreset {
@@ -477,6 +485,7 @@ interface AppBindings {
   RenameEntry(wsPath: string, relPath: string, newName: string): Promise<string>;
   CreateEntry(wsPath: string, dirRelPath: string, name: string, isDir: boolean): Promise<string>;
   DeleteEntry(wsPath: string, relPath: string): Promise<void>;
+  AddGitIgnore(wsPath: string, relPath: string): Promise<void>;
   MoveEntry(wsPath: string, srcRelPath: string, dstDirRelPath: string): Promise<string>;
   ReadFileForEdit(wsPath: string, path: string): Promise<EditContent>;
   SaveFile(wsPath: string, path: string, text: string, eol: string): Promise<void>;
@@ -565,6 +574,7 @@ interface AppBindings {
   GetModelConfig(): Promise<ModelConfigView>;
   SetModelConfig(input: ModelConfigInput): Promise<void>;
   ListModelPresets(): Promise<ModelPreset[]>;
+  FetchAvailableModels(): Promise<ModelsFetchView>;
   GetSessionMode(): Promise<string>;
   SetSessionMode(mode: string): Promise<void>;
   GetPermissionMode(): Promise<string>;
@@ -583,6 +593,8 @@ interface AppBindings {
   ConfirmArchive(ref: string): Promise<void>;
   ArchiveSession(id: string): Promise<void>;
   RestoreSession(id: string): Promise<void>;
+  BatchArchiveSessions(ids: string[]): Promise<number>;
+  BatchRestoreSessions(ids: string[]): Promise<number>;
   ChatHistory(id: string): Promise<ChatUpdate[]>;
 }
 
@@ -639,7 +651,7 @@ export async function getRemoteSessions(wsRef: string): Promise<Session[]> {
 
 export async function getSessionPreview(id: string): Promise<SessionPreview> {
   const a = app();
-  if (!a) return { Markdown: '', Truncated: false };
+  if (!a) return { Markdown: '' };
   return a.GetSessionPreview(id);
 }
 
@@ -780,6 +792,14 @@ export async function deleteEntry(wsPath: string, relPath: string): Promise<void
   const a = app();
   if (!a) throw new Error(ERR_NO_BINDING);
   return a.DeleteEntry(wsPath, relPath);
+}
+
+// addGitIgnore 把工作区内条目追加进其所在 git 仓库根的 .gitignore（目录带尾部斜杠）。
+// Go 侧已完成去重与路径校验；错误（非 git 仓库、越界等）向上抛。
+export async function addGitIgnore(wsPath: string, relPath: string): Promise<void> {
+  const a = app();
+  if (!a) throw new Error(ERR_NO_BINDING);
+  await a.AddGitIgnore(wsPath, relPath);
 }
 
 // moveEntry 把 srcRelPath 移入 dstDirRelPath 目录（保留原名），返回新绝对路径。
@@ -1521,12 +1541,13 @@ export async function setCloseBehavior(mode: string): Promise<void> {
 export async function getModelConfig(): Promise<ModelConfigView> {
   const a = app();
   if (!a) {
-    return {
+  return {
       Enabled: false,
       Preset: '',
       OpenAIBaseURL: '',
       AnthropicBaseURL: '',
-      Agents: {},
+      Models: [],
+      ActiveModel: '',
       APIKeySet: false,
     };
   }
@@ -1544,6 +1565,12 @@ export async function listModelPresets(): Promise<ModelPreset[]> {
   const a = app();
   if (!a) return [];
   return a.ListModelPresets();
+}
+
+export async function fetchAvailableModels(): Promise<ModelsFetchView> {
+  const a = app();
+  if (!a) throw new Error(ERR_NO_BINDING);
+  return a.FetchAvailableModels();
 }
 
 export async function getSessionMode(): Promise<string> {
@@ -1682,6 +1709,19 @@ export async function restoreSession(id: string): Promise<void> {
   const a = app();
   if (!a) return;
   await a.RestoreSession(id);
+}
+
+// 批量归档/恢复，返回后端实际变更数。
+export async function batchArchiveSessions(ids: string[]): Promise<number> {
+  const a = app();
+  if (!a) return 0;
+  return a.BatchArchiveSessions(ids);
+}
+
+export async function batchRestoreSessions(ids: string[]): Promise<number> {
+  const a = app();
+  if (!a) return 0;
+  return a.BatchRestoreSessions(ids);
 }
 
 export function onChatUpdate(cb: (p: { id: string; update: ChatUpdate }) => void): () => void {

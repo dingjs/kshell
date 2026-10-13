@@ -100,6 +100,20 @@ describe('ActiveTerminalsPanel', () => {
     expect(screen.getByText(tt('ui.workspace.active_terminals_empty'))).toBeInTheDocument();
   });
 
+  it('传 onNewShell 时渲染「+」按钮且点击调用一次', () => {
+    const onNewShell = vi.fn();
+    render(<ActiveTerminalsPanel wsPath={wsA} onNewShell={onNewShell} />);
+    const btn = screen.getByRole('button', { name: tt('ui.terminal.new') });
+    expect(btn).toHaveAttribute('title', tt('ui.terminal.new_local'));
+    fireEvent.click(btn);
+    expect(onNewShell).toHaveBeenCalledTimes(1);
+  });
+
+  it('不传 onNewShell 时不渲染「+」按钮', () => {
+    render(<ActiveTerminalsPanel wsPath={wsA} />);
+    expect(screen.queryByRole('button', { name: tt('ui.terminal.new') })).not.toBeInTheDocument();
+  });
+
   it('点击行切到对应工作区并 requestFocusTerm', () => {
     const spy = vi.spyOn(useAppStore.getState(), 'requestFocusTerm');
     const setActive = vi.spyOn(useAppStore.getState(), 'setActiveTab');

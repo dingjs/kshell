@@ -65,7 +65,9 @@
       "root_not_deletable": "The workspace root cannot be deleted",
       "dir_not_previewable": "Cannot preview a directory",
       "dir_not_openable": "Cannot open a directory with the default app",
-      "too_big_preview": "File size {{0}} bytes exceeds preview limit {{1}} bytes"
+      "too_big_preview": "File size {{0}} bytes exceeds preview limit {{1}} bytes",
+      "no_git_repo": "Not inside a git repository",
+      "gitignore_write_failed": "Failed to write .gitignore: {{0}}"
     },
     "workspace": {
       "file_too_big": "File exceeds the {{0}}-byte edit limit",
@@ -132,6 +134,12 @@
       "http_url_required": "{{0}} must start with http:// or https://",
       "invalid_session_mode": "Invalid session mode: {{0}}",
       "invalid_permission_mode": "Invalid permission mode: {{0}}"
+    },
+    "model_fetch": {
+      "no_endpoint": "No Base URL configured; cannot fetch models",
+      "openai_failed": "Failed to fetch from the OpenAI endpoint",
+      "anthropic_failed": "Failed to fetch from the Anthropic endpoint",
+      "all_failed": "All endpoints failed; check Base URL and API Key"
     },
     "ssh": {
       "connection_not_found": "Connection not found",
@@ -318,10 +326,20 @@
         "api_key_set": "Set (leave blank to keep)",
         "api_key_unset": "Not set",
         "clear_key": "Clear key",
-        "agent_model": "{{0}} model",
+        "active_model": "Active model",
+        "models": "Model list (click \"Set active\" to switch the injected model)",
+        "models_empty": "No models yet; add manually or click \"Fetch models\"",
+        "add_model": "Model ID",
+        "add": "Add",
+        "fetch_models": "Fetch models",
+        "fetch_hint": "Fetches from saved endpoints; save URL changes first",
+        "fetching": "Fetching...",
+        "fetch_empty": "The endpoints returned no models",
+        "set_active": "Set active",
+        "remove": "Remove",
         "save": "Save model configuration",
         "apply_recommended": "Apply recommended models",
-        "desc": "On launch, injects the matching protocol endpoint by agent type (Claude→Anthropic, Codex→OpenAI). Does not modify each tool's own config files.",
+        "desc": "On launch, injects the active model and matching protocol endpoints (Claude→Anthropic, Codex→OpenAI). Does not modify each tool's own config files.",
         "saved": "Saved; takes effect for sessions started afterward"
       },
       "tools": {
@@ -422,7 +440,22 @@
       "restore_title": "Restore to development list",
       "archive": "Archive",
       "restored": "Restored",
-      "activate": "Activate"
+      "activate": "Activate",
+      "select_mode": "Select",
+      "select_all": "Select all",
+      "selected_count": "Selected {{selected}} of {{total}}",
+      "batch_archive": "Archive selected",
+      "batch_restore": "Restore selected",
+      "batch_cancel": "Cancel",
+      "batch_archive_confirm_title": "Archive sessions",
+      "batch_restore_confirm_title": "Restore sessions",
+      "batch_archive_confirm_body": "About to archive {{count}} sessions. You can restore them from the archived view later.",
+      "batch_restore_confirm_body": "About to restore {{count}} sessions.",
+      "batch_confirm_ok": "Confirm",
+      "batch_done": "Archived {{count}} sessions",
+      "batch_restore_done": "Restored {{count}} sessions",
+      "batch_failed": "Batch operation failed: {{err}}",
+      "select_mode_aria": "Selection mode"
     },
     "archive_suggest": {
       "title": "Archive this session?",
@@ -514,7 +547,15 @@
       "tree_aria": "Workspace file tree",
       "show_all": "All",
       "show_all_aria": "Show all",
-      "refresh": "Refresh file tree"
+      "refresh": "Refresh file tree",
+      "delete_confirm_multi_title": "Delete {{n}} items",
+      "delete_confirm_multi_body": "The following {{n}} items will be deleted permanently:",
+      "delete_confirm_more": "…{{n}} items in total",
+      "deleted_multi": "Deleted {{n}} items",
+      "delete_partial_failed": "Deleted {{ok}} items, {{n}} failed: {{err}}",
+      "menu_ignore": "Add to git ignore",
+      "ignored": "Added to git ignore: {{name}}",
+      "ignore_failed": "Failed to add to git ignore"
     },
     "terminal": {
       "tabs_aria": "Terminal tabs",
@@ -717,8 +758,7 @@
     "transcript": {
       "preview_title": "Session preview",
       "activate": "Activate",
-      "load_failed": "Failed to load session",
-      "truncated": "Content truncated"
+      "load_failed": "Failed to load session"
     },
     "notify": {
       "aria": "Agent notifications",

@@ -256,6 +256,30 @@ func (a *App) RestoreSession(id string) error {
 	return nil
 }
 
+// BatchArchiveSessions 批量归档，返回实际新增数；有变更只广播一次 archive:changed。
+func (a *App) BatchArchiveSessions(ids []string) (int, error) {
+	n, err := a.archives().AddMany(ids)
+	if err != nil {
+		return n, err
+	}
+	if n > 0 {
+		a.Emit("archive:changed", map[string]any{})
+	}
+	return n, nil
+}
+
+// BatchRestoreSessions 批量恢复，返回实际移除数。
+func (a *App) BatchRestoreSessions(ids []string) (int, error) {
+	n, err := a.archives().RemoveMany(ids)
+	if err != nil {
+		return n, err
+	}
+	if n > 0 {
+		a.Emit("archive:changed", map[string]any{})
+	}
+	return n, nil
+}
+
 // ConfirmArchive 用户确认归档。ref 形如 terminal:t1 / chat:c1。
 // 磁盘会话还没绑上时先记下，等扫描回填后再写入名单。
 func (a *App) ConfirmArchive(ref string) error {

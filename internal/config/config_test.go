@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -158,8 +159,8 @@ func TestModelConfigDefaultsAndRoundTrip(t *testing.T) {
 	if got.Model.Enabled || got.Model.OpenAIBaseURL != "" || got.Model.AnthropicBaseURL != "" || got.Model.APIKey != "" {
 		t.Fatalf("默认 model 应为空，got %+v", got.Model)
 	}
-	if got.Model.Agents == nil {
-		t.Fatal("默认 Agents 应为非 nil 空 map")
+	if got.Model.Models == nil || len(got.Model.Models) != 0 {
+		t.Fatalf("默认 Models 应为非 nil 空 slice，got %#v", got.Model.Models)
 	}
 
 	want := Default()
@@ -168,7 +169,8 @@ func TestModelConfigDefaultsAndRoundTrip(t *testing.T) {
 		OpenAIBaseURL:    "https://example.com/v1",
 		AnthropicBaseURL: "https://example.com/anthropic",
 		APIKey:           "tp-secret",
-		Agents:           map[string]string{"claude": "mimo-v2.5"},
+		Models:           []string{"mimo-v2.5", "kimi-k2"},
+		ActiveModel:      "mimo-v2.5",
 	}
 	if err := Save(p, want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -187,7 +189,7 @@ func TestModelConfigNormalizes(t *testing.T) {
 	if err := os.MkdirAll(p.Root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	content := "model:\n  enabled: true\n  base_url: \"not-a-url\"\n  agents:\n    claude: \"  mimo-v2.5  \"\n"
+	content := "model:\n  enabled: true\n  base_url: \"not-a-url\"\n  active_model: \"  mimo-v2.5  \"\n  models: [\"  m1  \", \"\", \"m1\", \"m2\", \"  \"]\n"
 	if err := os.WriteFile(p.Config, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -199,8 +201,49 @@ func TestModelConfigNormalizes(t *testing.T) {
 	if got.Model.BaseURL != "" {
 		t.Fatalf("非法 base_url 应被丢弃，got %q", got.Model.BaseURL)
 	}
-	if got.Model.Agents["claude"] != "mimo-v2.5" {
-		t.Fatalf("agents 值应 TrimSpace，got %q", got.Model.Agents["claude"])
+	if got.Model.ActiveModel != "mimo-v2.5" {
+		t.Fatalf("active_model 应 TrimSpace，got %q", got.Model.ActiveModel)
+	}
+	want := []string{"m1", "m2"}
+	if !reflect.DeepEqual(got.Model.Models, want) {
+		t.Fatalf("models 应 TrimSpace/去空/去重：got %#v want %#v", got.Model.Models, want)
+	}
+}
+
+func TestModelConfigLegacyAgentsMigration(t *testing.T) {
+	p := tempPaths(t)
+	if err := os.MkdirAll(p.Root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "model:\n  enabled: true\n  agents:\n    claude: \"m1\"\n    codex: \"  m2  \"\n    gemini: \"m1\"\n"
+	if err := os.WriteFile(p.Config, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantModels := []string{"m1", "m2"}
+	if !reflect.DeepEqual(got.Model.Models, wantModels) {
+		t.Fatalf("旧 agents 应去重迁移进 Models：got %#v want %#v", got.Model.Models, wantModels)
+	}
+	if got.Model.ActiveModel != "m1" {
+		t.Fatalf("迁移后 ActiveModel 应取第一个，got %q", got.Model.ActiveModel)
+	}
+	if len(got.Model.Agents) != 0 {
+		t.Fatalf("迁移后 Agents 应清空，got %#v", got.Model.Agents)
+	}
+	// 保存后旧字段不再落盘。
+	if err := Save(p, got); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, err := os.ReadFile(p.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("agents")) {
+		t.Fatalf("保存后不应再写 agents 字段：\n%s", data)
 	}
 }
 

@@ -65,7 +65,9 @@
       "root_not_deletable": "工作区根目录不可删除",
       "dir_not_previewable": "不能预览目录",
       "dir_not_openable": "不能用默认应用打开目录",
-      "too_big_preview": "文件大小 {{0}} 字节超过预览上限 {{1}} 字节"
+      "too_big_preview": "文件大小 {{0}} 字节超过预览上限 {{1}} 字节",
+      "no_git_repo": "不在 git 仓库内",
+      "gitignore_write_failed": "写 .gitignore 失败：{{0}}"
     },
     "workspace": {
       "file_too_big": "文件超过 {{0}} 字节，不支持编辑",
@@ -132,6 +134,12 @@
       "http_url_required": "{{0}} 必须以 http:// 或 https:// 开头",
       "invalid_session_mode": "无效的会话模式：{{0}}",
       "invalid_permission_mode": "无效的权限模式：{{0}}"
+    },
+    "model_fetch": {
+      "no_endpoint": "尚未配置任何 Base URL，无法拉取模型",
+      "openai_failed": "OpenAI 端点拉取失败",
+      "anthropic_failed": "Anthropic 端点拉取失败",
+      "all_failed": "所有端点拉取失败，请检查 Base URL 与 API Key"
     },
     "ssh": {
       "connection_not_found": "连接不存在",
@@ -318,10 +326,20 @@
         "api_key_set": "已设置（留空不修改）",
         "api_key_unset": "未设置",
         "clear_key": "清除密钥",
-        "agent_model": "{{0}} 模型",
+        "active_model": "当前模型",
+        "models": "模型列表（点击「设为当前」切换启动时注入的模型）",
+        "models_empty": "暂无模型，可手动添加或点「拉取模型」",
+        "add_model": "模型 ID",
+        "add": "添加",
+        "fetch_models": "拉取模型",
+        "fetch_hint": "从已保存的端点拉取，改完 URL 请先保存",
+        "fetching": "拉取中…",
+        "fetch_empty": "端点未返回任何模型",
+        "set_active": "设为当前",
+        "remove": "删除",
         "save": "保存模型配置",
         "apply_recommended": "应用推荐模型",
-        "desc": "启动时按 agent 类型注入对应协议端点（Claude→Anthropic，Codex→OpenAI）。不改各工具自身配置文件。",
+        "desc": "启动时统一注入当前模型与对应协议端点（Claude→Anthropic，Codex→OpenAI）。不改各工具自身配置文件。",
         "saved": "已保存，对新启动的会话生效"
       },
       "tools": {
@@ -422,7 +440,22 @@
       "restore_title": "还原到开发列表",
       "archive": "归档",
       "restored": "已恢复",
-      "activate": "激活"
+      "activate": "激活",
+      "select_mode": "多选",
+      "select_all": "全选",
+      "selected_count": "已选 {{selected}} / 共 {{total}}",
+      "batch_archive": "归档所选",
+      "batch_restore": "恢复所选",
+      "batch_cancel": "取消",
+      "batch_archive_confirm_title": "归档会话",
+      "batch_restore_confirm_title": "恢复会话",
+      "batch_archive_confirm_body": "即将归档 {{count}} 个会话，之后可在「已归档」中恢复。",
+      "batch_restore_confirm_body": "即将恢复 {{count}} 个会话。",
+      "batch_confirm_ok": "确认",
+      "batch_done": "已归档 {{count}} 个会话",
+      "batch_restore_done": "已恢复 {{count}} 个会话",
+      "batch_failed": "批量操作失败：{{err}}",
+      "select_mode_aria": "多选模式"
     },
     "archive_suggest": {
       "title": "归档这个会话？",
@@ -514,7 +547,15 @@
       "tree_aria": "工作区文件树",
       "show_all": "全部",
       "show_all_aria": "显示全部",
-      "refresh": "刷新文件树"
+      "refresh": "刷新文件树",
+      "delete_confirm_multi_title": "删除 {{n}} 项",
+      "delete_confirm_multi_body": "将永久删除以下 {{n}} 项，该操作不可恢复：",
+      "delete_confirm_more": "等 {{n}} 项",
+      "deleted_multi": "已删除 {{n}} 项",
+      "delete_partial_failed": "已删除 {{ok}} 项，{{n}} 项失败：{{err}}",
+      "menu_ignore": "加入 git 忽略",
+      "ignored": "已加入 git 忽略：{{name}}",
+      "ignore_failed": "加入 git 忽略失败"
     },
     "terminal": {
       "tabs_aria": "终端子页签",
@@ -717,8 +758,7 @@
     "transcript": {
       "preview_title": "会话预览",
       "activate": "激活",
-      "load_failed": "无法加载会话",
-      "truncated": "内容已截断"
+      "load_failed": "无法加载会话"
     },
     "notify": {
       "aria": "Agent 通知",
