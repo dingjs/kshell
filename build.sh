@@ -36,7 +36,7 @@ done
 
 # ---- Go 探测 ----
 if ! command -v go &>/dev/null; then
-    for candidate in /usr/local/go/bin /opt/homebrew/bin/go/bin /usr/local/bin/go ~/go/bin/go; do
+    for candidate in /usr/local/go/bin "$HOME/.local/go/bin" /opt/homebrew/bin/go/bin /usr/local/bin/go ~/go/bin/go; do
         if [[ -x "$candidate/go" ]]; then
             export PATH="$candidate:$PATH"
             break
@@ -48,7 +48,6 @@ if ! command -v go &>/dev/null; then
     exit 1
 fi
 
-GO_VERSION=$(go version | grep -oP 'go\d+\.\d+')
 echo "[INFO] Go: $(go version)"
 
 # ---- Desktop 模式：Wails 探测 ----
@@ -102,13 +101,18 @@ if $DESKTOP; then
     eval $WAILS_CMD
 
     mkdir -p dist
-    # wails 输出文件名由 wails.json "outputfilename": "kshell" 决定，
-    # Linux/macOS 无 .exe 后缀；向用户呈现统一名称 kshell-desktop
-    if [[ -f build/bin/kshell ]]; then
+    # wails 输出名由 wails.json "outputfilename": "kshell" 决定：macOS 产出
+    # kshell.app bundle，Linux 产出裸二进制。两者都向用户呈现统一名称 kshell-desktop。
+    if [[ -d build/bin/kshell.app ]]; then
+        rm -rf "dist/kshell-desktop.app"
+        cp -R build/bin/kshell.app "dist/kshell-desktop.app"
+        cp build/bin/kshell.app/Contents/MacOS/kshell "dist/kshell-desktop"
+        echo "==> 完成: dist/kshell-desktop.app（可双击）+ dist/kshell-desktop（裸二进制）"
+    elif [[ -f build/bin/kshell ]]; then
         cp build/bin/kshell "dist/kshell-desktop"
         echo "==> 完成: dist/kshell-desktop"
     else
-        echo "[ERROR] wails build did not produce build/bin/kshell" >&2
+        echo "[ERROR] wails build did not produce build/bin/kshell(.app)" >&2
         exit 1
     fi
 else
