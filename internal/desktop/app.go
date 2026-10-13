@@ -174,6 +174,11 @@ func newWindowManagerWithEmit(a *App, l TerminalLauncher) *WindowManager {
 func (a *App) Startup(ctx context.Context) {
 	// 黑匣子最先就位：windowsgui 无控制台，之后所有 log.Printf 才有归宿
 	setupDesktopLog()
+
+	// macOS GUI 启动的 PATH 不含 Homebrew 等用户 bin 目录，先补齐再扫描：否则 Detect
+	// 的 LookPath 会漏掉 Homebrew 装的 claude/codex 等 agent，误判「已损坏」。
+	augmentPath()
+
 	a.mu.Lock()
 	a.ctx = ctx
 	if a.opts.Emit == nil && ctx != nil {
