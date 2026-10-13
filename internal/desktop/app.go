@@ -172,6 +172,10 @@ func newWindowManagerWithEmit(a *App, l TerminalLauncher) *WindowManager {
 
 // Startup 由 Wails 在窗口启动后调用：装配真实依赖、启动托盘并触发后台扫描。
 func (a *App) Startup(ctx context.Context) {
+	// macOS GUI 启动的 PATH 不含 Homebrew 等用户 bin 目录，先补齐再扫描：否则 Detect
+	// 的 LookPath 会漏掉 Homebrew 装的 claude/codex 等 agent，误判「已损坏」。
+	augmentPath()
+
 	a.mu.Lock()
 	a.ctx = ctx
 	if a.opts.Emit == nil && ctx != nil {
