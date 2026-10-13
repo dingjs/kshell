@@ -260,9 +260,11 @@ export function SkillPlaza() {
                         <input
                           type="checkbox"
                           checked={!!checked[tg.ToolID]}
-                          onChange={(e) =>
-                            setChecked((prev) => ({ ...prev, [tg.ToolID]: e.currentTarget.checked }))
-                          }
+                          onChange={(e) => {
+                            // currentTarget 在事件派发结束后为 null，updater 可能延迟到渲染期执行，须先取值
+                            const next = e.currentTarget.checked;
+                            setChecked((prev) => ({ ...prev, [tg.ToolID]: next }));
+                          }}
                         />
                         <span>{tg.ToolID}</span>
                         <span className="truncate text-muted-foreground">{tg.Root}</span>
