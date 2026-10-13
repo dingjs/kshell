@@ -51,10 +51,9 @@ export interface Session {
   Path: string;
 }
 
-/** GetSessionPreview 返回的只读对话 Markdown */
+/** GetSessionPreview 返回的只读对话 Markdown（全量，不截断） */
 export interface SessionPreview {
   Markdown: string;
-  Truncated: boolean;
 }
 
 // "scan:done" 事件 payload（internal/desktop/app.go runScan）；
@@ -652,7 +651,7 @@ export async function getRemoteSessions(wsRef: string): Promise<Session[]> {
 
 export async function getSessionPreview(id: string): Promise<SessionPreview> {
   const a = app();
-  if (!a) return { Markdown: '', Truncated: false };
+  if (!a) return { Markdown: '' };
   return a.GetSessionPreview(id);
 }
 

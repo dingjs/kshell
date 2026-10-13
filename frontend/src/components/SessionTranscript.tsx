@@ -21,7 +21,6 @@ export default function SessionTranscript({
 }) {
   const { t } = useTranslation();
   const [markdown, setMarkdown] = useState('');
-  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +33,6 @@ export default function SessionTranscript({
       .then((p) => {
         if (cancelled) return;
         setMarkdown(p.Markdown ?? '');
-        setTruncated(!!p.Truncated);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -56,8 +54,8 @@ export default function SessionTranscript({
           {t('ui.transcript.activate')}
         </Button>
       </div>
-      {/* flex 列布局：截断横幅 shrink-0，预览占剩余高度。此前横幅与 h-full 预览做块级兄弟，
-          预览整体被下推一个横幅高度，底部被 overflow-hidden 裁掉，滚动条滚不到最底部。 */}
+      {/* flex 列布局：预览占满剩余高度可滚动。预览是 h-full 块级元素时会被
+          overflow-hidden 裁掉底部，滚动条滚不到最底部。 */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {loading ? (
           <div className="flex flex-col gap-2 p-3">
@@ -67,14 +65,9 @@ export default function SessionTranscript({
         ) : error ? (
           <EmptyState title={t('ui.transcript.load_failed')} hint={error} />
         ) : (
-          <>
-            {truncated && (
-              <p className="shrink-0 border-b border-border px-3 py-1 text-xs text-muted-foreground">{t('ui.transcript.truncated')}</p>
-            )}
-            <div className="min-h-0 flex-1">
-              <MarkdownPreview markdown={markdown} workspaceRoot={workspaceRoot} />
-            </div>
-          </>
+          <div className="min-h-0 flex-1">
+            <MarkdownPreview markdown={markdown} workspaceRoot={workspaceRoot} />
+          </div>
         )}
       </div>
     </div>

@@ -877,10 +877,9 @@ func (a *App) GetSessions() []providers.Session {
 	return a.result.Sessions
 }
 
-// SessionPreview 是历史会话的只读 Markdown 正文。
+// SessionPreview 是历史会话的只读 Markdown 正文（全量，不截断）。
 type SessionPreview struct {
-	Markdown  string
-	Truncated bool
+	Markdown string
 }
 
 // GetSessionPreview 按会话 ID 抽取对话 Markdown，供预览区只读展示。
@@ -889,11 +888,11 @@ func (a *App) GetSessionPreview(id string) (SessionPreview, error) {
 	if !ok {
 		return SessionPreview{}, errSessionNotFound
 	}
-	md, truncated, err := providers.FormatSessionMarkdown(s)
+	md, err := providers.FormatSessionMarkdown(s)
 	if err != nil {
 		return SessionPreview{}, err
 	}
-	return SessionPreview{Markdown: md, Truncated: truncated}, nil
+	return SessionPreview{Markdown: md}, nil
 }
 
 // ResumeSession 恢复指定会话：弹出新终端窗口并在其中启动 agent CLI。

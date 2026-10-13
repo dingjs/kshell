@@ -168,7 +168,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getWorkspaces.mockResolvedValue([]);
   mocks.getSessions.mockResolvedValue([]);
-  mocks.getSessionPreview.mockResolvedValue({ Markdown: '', Truncated: false });
+  mocks.getSessionPreview.mockResolvedValue({ Markdown: '' });
   mocks.scanSessions.mockResolvedValue(undefined);
   mocks.onScanDone.mockImplementation(() => () => {});
   mocks.onToolsUpdated.mockImplementation(() => () => {});

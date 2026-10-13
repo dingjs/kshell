@@ -758,8 +758,7 @@
     "transcript": {
       "preview_title": "Session preview",
       "activate": "Activate",
-      "load_failed": "Failed to load session",
-      "truncated": "Content truncated"
+      "load_failed": "Failed to load session"
     },
     "notify": {
       "aria": "Agent notifications",
